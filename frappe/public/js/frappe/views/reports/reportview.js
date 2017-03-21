@@ -212,7 +212,7 @@ frappe.views.ReportView = frappe.ui.Listing.extend({
 
 	set_route_filters: function(first_load) {
 		var me = this;
-		if(frappe.route_options) {
+		if(frappe.route_options && !this.list_settings.filters) {
 			this.set_filters_from_route_options();
 			return true;
 		} else if(this.list_settings
@@ -330,14 +330,33 @@ frappe.views.ReportView = frappe.ui.Listing.extend({
 						docfield = columnDef.report_docfield;
 
 						docfield.link_onclick =
-							repl('frappe.container.page.reportview.set_filter("%(fieldname)s", "%(value)s")',
-								{fieldname:docfield.fieldname, value:value});
+							repl('frappe.container.page.reportview.filter_or_open("%(parent)s", "%(fieldname)s", "%(value)s")',
+								{parent: docfield.parent, fieldname:docfield.fieldname, value:value});
 					}
 					return frappe.format(value, docfield, {for_print: for_print, always_show_decimals: true}, dataContext);
 				}
 			}
 			return coldef;
 		});
+	},
+
+	filter_or_open: function(parent, fieldname, value) {
+		// set filter on click, if filter is set, open the document
+		var filter_set = false;
+		this.filter_list.get_filters().forEach(function(f) {
+			if(f[1]===fieldname) {
+				filter_set = true;
+			}
+		});
+
+		if(!filter_set) {
+			this.set_filter(fieldname, value, false, false, parent);
+		} else {
+			var df = frappe.meta.get_docfield(parent, fieldname);
+			if(df.fieldtype==='Link') {
+				frappe.set_route('Form', df.options, value);
+			}
+		}
 	},
 
 	// render data

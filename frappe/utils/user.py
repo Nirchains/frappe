@@ -189,7 +189,7 @@ class UserPermissions:
 		return self.can_read
 
 	def load_user(self):
-		d = frappe.db.sql("""select email, first_name, last_name,
+		d = frappe.db.sql("""select email, first_name, last_name, creation,
 			email_signature, user_type, language, background_image, background_style, mute_sounds
 			from tabUser where name = %s""", (self.name,), as_dict=1)[0]
 
@@ -265,6 +265,7 @@ def add_system_manager(email, first_name=None, last_name=None, send_welcome_emai
 		"user_type": "System User",
 		"send_welcome_email": 1 if send_welcome_email else 0
 	})
+
 	user.insert()
 
 	# add roles
@@ -344,7 +345,7 @@ def disable_users(limits=None):
 				frappe.db.set_value("User", user, 'enabled', 0)
 
 		from frappe.core.doctype.user.user import get_total_users
-		
+
 		if get_total_users() > cint(limits.get('users')):
 			reset_simultaneous_sessions(cint(limits.get('users')))
 

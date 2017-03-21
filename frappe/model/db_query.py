@@ -136,11 +136,13 @@ class DatabaseQuery(object):
 		self.set_field_tables()
 
 		args.fields = ', '.join(self.fields)
-
+		
 		self.set_order_by(args)
-		self.check_sort_by_table(args.order_by)
+		
+		self.validate_order_by_and_group_by(args.order_by)
 		args.order_by = args.order_by and (" order by " + args.order_by) or ""
 
+		self.validate_order_by_and_group_by(self.group_by)
 		args.group_by = self.group_by and (" group by " + self.group_by) or ""
 
 		return args
@@ -276,7 +278,7 @@ class DatabaseQuery(object):
 		can_be_null = True
 
 		# prepare in condition
-		if f.operator in ('in', 'not in'):
+		if f.operator.lower() in ('in', 'not in'):
 			values = f.value
 			if not isinstance(values, (list, tuple)):
 				values = values.split(",")
@@ -291,7 +293,7 @@ class DatabaseQuery(object):
 			if df and df.fieldtype in ("Check", "Float", "Int", "Currency", "Percent"):
 				can_be_null = False
 
-			if f.operator=='Between' and \
+			if f.operator.lower() == 'between' and \
 				(f.fieldname in ('creation', 'modified') or (df and (df.fieldtype=="Date" or df.fieldtype=="Datetime"))):
 				value = "'%s' AND '%s'" % (
 					get_datetime(f.value[0]).strftime("%Y-%m-%d %H:%M:%S.%f"),
@@ -309,12 +311,12 @@ class DatabaseQuery(object):
 				value = get_time(f.value).strftime("%H:%M:%S.%f")
 				fallback = "'00:00:00'"
 
-			elif f.operator in ("like", "not like") or (isinstance(f.value, basestring) and
+			elif f.operator.lower() in ("like", "not like") or (isinstance(f.value, basestring) and
 				(not df or df.fieldtype not in ["Float", "Int", "Currency", "Percent", "Check"])):
 					value = "" if f.value==None else f.value
 					fallback = '""'
 
-					if f.operator in ("like", "not like") and isinstance(value, basestring):
+					if f.operator.lower() in ("like", "not like") and isinstance(value, basestring):
 						# because "like" uses backslash (\) for escaping
 						value = value.replace("\\", "\\\\").replace("%", "%%")
 
@@ -323,12 +325,12 @@ class DatabaseQuery(object):
 				fallback = 0
 
 			# put it inside double quotes
-			if isinstance(value, basestring) and not f.operator=='Between':
+			if isinstance(value, basestring) and not f.operator.lower() == 'between':
 				value = '"{0}"'.format(frappe.db.escape(value, percent=False))
 
 		if (self.ignore_ifnull
 			or not can_be_null
-			or (f.value and f.operator in ('=', 'like'))
+			or (f.value and f.operator.lower() in ('=', 'like'))
 			or 'ifnull(' in column_name.lower()):
 			condition = '{column_name} {operator} {value}'.format(
 				column_name=column_name, operator=f.operator,
@@ -443,6 +445,7 @@ class DatabaseQuery(object):
 
 	def set_order_by(self, args):
 		meta = frappe.get_meta(self.doctype)
+		
 		if self.order_by:
 			args.order_by = self.order_by
 		else:
@@ -475,13 +478,23 @@ class DatabaseQuery(object):
 				if meta.is_submittable:
 					args.order_by = "`tab{0}`.docstatus asc, {1}".format(self.doctype, args.order_by)
 
-	def check_sort_by_table(self, order_by):
-		if "." in order_by:
-			tbl = order_by.split('.')[0]
-			if tbl not in self.tables:
-				if tbl.startswith('`'):
-					tbl = tbl[4:-1]
-				frappe.throw(_("Please select atleast 1 column from {0} to sort").format(tbl))
+	def validate_order_by_and_group_by(self, parameters):
+		"""Check order by, group by so that atleast one column is selected and does not have subquery"""
+		if not parameters:
+			return
+
+		_lower = parameters.lower()
+		if 'select' in _lower and ' from ' in _lower:
+			frappe.throw(_('Cannot use sub-query in order by'))
+		
+
+		for field in parameters.split(","):
+			if "." in field and field.strip().startswith("`tab"):
+				tbl = field.strip().split('.')[0]
+				if tbl not in self.tables:
+					if tbl.startswith('`'):
+						tbl = tbl[4:-1]
+					frappe.throw(_("Please select atleast 1 column from {0} to sort/group").format(tbl))
 
 	def add_limit(self):
 		if self.limit_page_length:

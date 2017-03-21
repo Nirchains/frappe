@@ -27,6 +27,7 @@ frappe.Application = Class.extend({
 		this.load_bootinfo();
 		this.make_nav_bar();
 		this.set_favicon();
+		this.setup_analytics();
 		frappe.ui.keys.setup();
 		this.set_rtl();
 
@@ -60,9 +61,6 @@ frappe.Application = Class.extend({
 		} else {
 			this.show_notes();
 		}
-
-		// ask to allow notifications
-		frappe.utils.if_notify_permitted();
 
 		// listen to csrf_update
 		frappe.realtime.on("csrf_generated", function(data) {
@@ -274,6 +272,18 @@ frappe.Application = Class.extend({
 			});
 			me.show_notes();
 		};
+	},
+
+	setup_analytics: function() {
+		if(window.mixpanel) {
+			window.mixpanel.identify(frappe.session.user);
+			window.mixpanel.people.set({
+			    "$first_name": frappe.boot.user.first_name,
+			    "$last_name": frappe.boot.user.last_name,
+			    "$created": frappe.boot.user.creation,
+			    "$email": frappe.session.user
+			});
+		}
 	},
 
 	show_notes: function() {
