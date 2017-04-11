@@ -105,7 +105,7 @@ frappe.views.ListView = Class.extend({
 		var me = this;
 		this.columns = [];
 		var name_column = {
-			colspan: this.settings.colwidths && this.settings.colwidths.subject || 6,
+			colspan: this.settings.colwidths && this.settings.colwidths.subject || 3,
 			type: "Subject",
 			title: "Name"
 		};
@@ -168,13 +168,13 @@ frappe.views.ListView = Class.extend({
 		// field width
 		var colspan = 3;
 		if(in_list(["Int", "Percent"], df.fieldtype)) {
-			colspan = 2;
+			colspan = 1;
 		} else if(in_list(["Check", "Image"], df.fieldtype)) {
 			colspan = 1;
 		} else if(in_list(["name", "subject", "title"], df.fieldname)) { // subjects are longer
-			colspan = 4;
+			colspan = 2;
 		} else if(df.fieldtype=="Text Editor" || df.fieldtype=="Text") {
-			colspan = 4;
+			colspan = 2;
 		}
 		if(df.columns && df.columns>0){
 			colspan = df.columns;
