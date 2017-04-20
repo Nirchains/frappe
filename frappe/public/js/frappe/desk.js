@@ -10,6 +10,13 @@ frappe.start_app = function() {
 }
 
 $(document).ready(function() {
+	if(!frappe.utils.supportsES6) {
+		frappe.msgprint({
+			indicator: 'red',
+			title: __('Browser not supported'),
+			message: __('Some of the features might not work in your browser. Please update your browser to the latest version.')
+		});
+	}
 	frappe.start_app();
 });
 
@@ -133,9 +140,9 @@ frappe.Application = Class.extend({
 				var s = new frappe.ui.Dialog({
 						title: __("Checking one moment"),
 					fields: [{
-                    "fieldtype": "HTML",
-                    "fieldname": "checking"
-                }]
+					"fieldtype": "HTML",
+					"fieldname": "checking"
+				}]
 					});
 				s.fields_dict.checking.$wrapper.html('<i class="fa fa-spinner fa-spin fa-4x"></i>')
 				s.show();
@@ -415,10 +422,10 @@ frappe.Application = Class.extend({
 		if(window.mixpanel) {
 			window.mixpanel.identify(frappe.session.user);
 			window.mixpanel.people.set({
-			    "$first_name": frappe.boot.user.first_name,
-			    "$last_name": frappe.boot.user.last_name,
-			    "$created": frappe.boot.user.creation,
-			    "$email": frappe.session.user
+				"$first_name": frappe.boot.user.first_name,
+				"$last_name": frappe.boot.user.last_name,
+				"$created": frappe.boot.user.creation,
+				"$email": frappe.session.user
 			});
 		}
 	},
@@ -427,17 +434,22 @@ frappe.Application = Class.extend({
 		var me = this;
 		if(frappe.boot.notes.length) {
 			frappe.boot.notes.forEach(function(note) {
-				if(!note.seen) {
+				if(!note.seen || note.notify_on_every_login) {
 					var d = frappe.msgprint({message:note.content, title:note.title});
 					d.keep_open = true;
 					d.custom_onhide = function() {
 						note.seen = true;
-						frappe.call({
-							method: "frappe.desk.doctype.note.note.mark_as_seen",
-							args: {
-								note: note.name
-							}
-						});
+
+						// Mark note as read if the Notify On Every Login flag is not set
+						if (!note.notify_on_every_login) {
+							frappe.call({
+								method: "frappe.desk.doctype.note.note.mark_as_seen",
+								args: {
+									note: note.name
+								}
+							});
+						}
+
 						// next note
 						me.show_notes();
 
@@ -510,7 +522,8 @@ frappe.get_desktop_icons = function(show_hidden, show_global) {
 			out = m.link in frappe.boot.page_info;
 		}
 		else if(m._doctype) {
-			out = frappe.model.can_read(m._doctype);
+			//out = frappe.model.can_read(m._doctype);
+			out = frappe.boot.user.can_read.includes(m._doctype);
 		} else {
 			if(m.module_name==='Learn') {
 				// no permissions necessary for learn
