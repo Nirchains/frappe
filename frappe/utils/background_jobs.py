@@ -1,11 +1,14 @@
 from __future__ import unicode_literals, print_function
 import redis
 from rq import Connection, Queue, Worker
+from rq.logutils import setup_loghandlers
 from frappe.utils import cstr
 from collections import defaultdict
 import frappe
 import MySQLdb
 import os, socket, time
+from frappe import _
+from six import string_types
 
 default_timeout = 300
 queue_timeout = {
@@ -52,10 +55,13 @@ def execute_job(site, method, event, job_name, kwargs, user=None, async=True, re
 
 	if async:
 		frappe.connect(site)
+		if os.environ.get('CI'):
+			frappe.flags.in_test = True
+
 		if user:
 			frappe.set_user(user)
 
-	if isinstance(method, basestring):
+	if isinstance(method, string_types):
 		method_name = method
 		method = frappe.get_attr(method)
 	else:
@@ -101,6 +107,9 @@ def start_worker(queue=None):
 		# empty init is required to get redis_queue from common_site_config.json
 		redis_connection = get_redis_conn()
 
+	if os.environ.get('CI'):
+		setup_loghandlers('ERROR')
+
 	with Connection(redis_connection):
 		queues = get_queue_list(queue)
 		Worker(queues, name=get_worker_name(queue)).work()
@@ -143,7 +152,7 @@ def get_queue_list(queue_list=None):
 	'''Defines possible queues. Also wraps a given queue in a list after validating.'''
 	default_queue_list = queue_timeout.keys()
 	if queue_list:
-		if isinstance(queue_list, basestring):
+		if isinstance(queue_list, string_types):
 			queue_list = [queue_list]
 
 		for queue in queue_list:
@@ -165,7 +174,7 @@ def validate_queue(queue, default_queue_list=None):
 		default_queue_list = queue_timeout.keys()
 
 	if queue not in default_queue_list:
-		frappe.throw("Queue should be one of {0}".format(', '.join(default_queue_list)))
+		frappe.throw(_("Queue should be one of {0}").format(', '.join(default_queue_list)))
 
 def get_redis_conn():
 	if not hasattr(frappe.local, 'conf'):

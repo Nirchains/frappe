@@ -47,6 +47,13 @@ def remove_tag(tag, dt, dn):
 	"removes tag from the record"
 	DocTags(dt).remove(dn, tag)
 
+@frappe.whitelist()
+def get_tagged_docs(doctype, tag):
+	frappe.has_permission(doctype, throw=True)
+
+	return frappe.db.sql("""SELECT name
+		FROM `tab{0}`
+		WHERE _user_tags LIKE '%{1}%'""".format(doctype, tag))
 
 @frappe.whitelist()
 def get_tags(doctype, txt, cat_tags):
@@ -84,7 +91,6 @@ class DocTags:
 	def remove(self, dn, tag):
 		"""remove a user tag"""
 		tl = self.get_tags(dn).split(',')
-		print(tag, filter(lambda x:x!=tag, tl))
 		self.update(dn, filter(lambda x:x.lower()!=tag.lower(), tl))
 
 	def remove_all(self, dn):

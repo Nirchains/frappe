@@ -2,6 +2,9 @@
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
+
+from six import iteritems, string_types
+
 """build query for doclistview and return results"""
 
 import frappe, json, copy
@@ -34,7 +37,7 @@ class DatabaseQuery(object):
 		update=None, add_total_row=None, user_settings=None):
 		if not ignore_permissions and not frappe.has_permission(self.doctype, "read", user=user):
 			frappe.flags.error_message = _('Insufficient Permission for {0}').format(frappe.bold(self.doctype))
-			raise frappe.PermissionError, self.doctype
+			raise frappe.PermissionError(self.doctype)
 
 		# fitlers and fields swappable
 		# its hard to remember what comes first
@@ -44,7 +47,7 @@ class DatabaseQuery(object):
 			filters, fields = fields, filters
 
 		elif fields and isinstance(filters, list) \
-			and len(filters) > 1 and isinstance(filters[0], basestring):
+			and len(filters) > 1 and isinstance(filters[0], string_types):
 			# if `filters` is a list of strings, its probably fields
 			filters, fields = fields, filters
 
@@ -154,7 +157,7 @@ class DatabaseQuery(object):
 
 	def parse_args(self):
 		"""Convert fields and filters from strings to list, dicts"""
-		if isinstance(self.fields, basestring):
+		if isinstance(self.fields, string_types):
 			if self.fields == "*":
 				self.fields = ["*"]
 			else:
@@ -165,13 +168,13 @@ class DatabaseQuery(object):
 
 		for filter_name in ["filters", "or_filters"]:
 			filters = getattr(self, filter_name)
-			if isinstance(filters, basestring):
+			if isinstance(filters, string_types):
 				filters = json.loads(filters)
 
 			if isinstance(filters, dict):
 				fdict = filters
 				filters = []
-				for key, value in fdict.iteritems():
+				for key, value in iteritems(fdict):
 					filters.append(make_filter_tuple(self.doctype, key, value))
 			setattr(self, filter_name, filters)
 
@@ -200,7 +203,7 @@ class DatabaseQuery(object):
 		doctype = table_name[4:-1]
 		if (not self.flags.ignore_permissions) and (not frappe.has_permission(doctype)):
 			frappe.flags.error_message = _('Insufficient Permission for {0}').format(frappe.bold(doctype))
-			raise frappe.PermissionError, doctype
+			raise frappe.PermissionError(doctype)
 
 	def set_field_tables(self):
 		'''If there are more than one table, the fieldname must not be ambigous.
@@ -227,7 +230,7 @@ class DatabaseQuery(object):
 		# remove from filters
 		to_remove = []
 		for each in self.filters:
-			if isinstance(each, basestring):
+			if isinstance(each, string_types):
 				each = [each]
 
 			for element in each:
@@ -261,7 +264,7 @@ class DatabaseQuery(object):
 			filters = [filters]
 
 		for f in filters:
-			if isinstance(f, basestring):
+			if isinstance(f, string_types):
 				conditions.append(f)
 			else:
 				conditions.append(self.prepare_filter_condition(f))
@@ -288,7 +291,7 @@ class DatabaseQuery(object):
 
 		# prepare in condition
 		if f.operator.lower() in ('in', 'not in'):
-			values = f.value
+			values = f.value or ''
 			if not isinstance(values, (list, tuple)):
 				values = values.split(",")
 
@@ -328,12 +331,12 @@ class DatabaseQuery(object):
 				value = get_time(f.value).strftime("%H:%M:%S.%f")
 				fallback = "'00:00:00'"
 
-			elif f.operator.lower() in ("like", "not like") or (isinstance(f.value, basestring) and
+			elif f.operator.lower() in ("like", "not like") or (isinstance(f.value, string_types) and
 				(not df or df.fieldtype not in ["Float", "Int", "Currency", "Percent", "Check"])):
 					value = "" if f.value==None else f.value
 					fallback = '""'
 
-					if f.operator.lower() in ("like", "not like") and isinstance(value, basestring):
+					if f.operator.lower() in ("like", "not like") and isinstance(value, string_types):
 						# because "like" uses backslash (\) for escaping
 						value = value.replace("\\", "\\\\").replace("%", "%%")
 
@@ -342,7 +345,7 @@ class DatabaseQuery(object):
 				fallback = 0
 
 			# put it inside double quotes
-			if isinstance(value, basestring) and not f.operator.lower() == 'between':
+			if isinstance(value, string_types) and not f.operator.lower() == 'between':
 				value = '"{0}"'.format(frappe.db.escape(value, percent=False))
 
 		if (self.ignore_ifnull
@@ -385,7 +388,7 @@ class DatabaseQuery(object):
 			# apply user permissions?
 			if role_permissions.get("apply_user_permissions", {}).get("read"):
 				# get user permissions
-				user_permissions = frappe.defaults.get_user_permissions(self.user)
+				user_permissions = frappe.permissions.get_user_permissions(self.user)
 				self.add_user_permissions(user_permissions,
 					user_permission_doctypes=role_permissions.get("user_permission_doctypes").get("read"))
 
@@ -420,7 +423,6 @@ class DatabaseQuery(object):
 	def add_user_permissions(self, user_permissions, user_permission_doctypes=None):
 		user_permission_doctypes = frappe.permissions.get_user_permission_doctypes(user_permission_doctypes, user_permissions)
 		meta = frappe.get_meta(self.doctype)
-
 		for doctypes in user_permission_doctypes:
 			match_filters = {}
 			match_conditions = []
@@ -428,12 +430,18 @@ class DatabaseQuery(object):
 			for df in meta.get_fields_to_check_permissions(doctypes):
 				user_permission_values = user_permissions.get(df.options, [])
 
-				condition = 'ifnull(`tab{doctype}`.`{fieldname}`, "")=""'.format(doctype=self.doctype, fieldname=df.fieldname)
+				cond = 'ifnull(`tab{doctype}`.`{fieldname}`, "")=""'.format(doctype=self.doctype, fieldname=df.fieldname)
 				if user_permission_values:
-					condition += """ or `tab{doctype}`.`{fieldname}` in ({values})""".format(
+					if not cint(frappe.get_system_settings("apply_strict_user_permissions")):
+						condition = cond + " or "
+					else:
+						condition = ""
+					condition += """`tab{doctype}`.`{fieldname}` in ({values})""".format(
 						doctype=self.doctype, fieldname=df.fieldname,
-						values=", ".join([('"'+frappe.db.escape(v, percent=False)+'"') for v in user_permission_values])
-					)
+						values=", ".join([('"'+frappe.db.escape(v, percent=False)+'"') for v in user_permission_values]))
+				else:
+					condition = cond
+
 				match_conditions.append("({condition})".format(condition=condition))
 
 				match_filters[df.options] = user_permission_values

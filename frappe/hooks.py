@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 from . import __version__ as app_version
 
+
 app_name = "frappe"
 app_title = "Frappe Framework"
 app_publisher = "Frappe Technologies"
@@ -27,6 +28,7 @@ app_include_js = [
 	"assets/js/desk.min.js",
 	"assets/js/list.min.js",
 	"assets/js/form.min.js",
+	"assets/js/control.min.js",
 	"assets/js/report.min.js",
 	"assets/js/d3.min.js",
 	"assets/frappe/js/frappe/toolbar.js"
@@ -47,9 +49,11 @@ bootstrap = "assets/frappe/css/bootstrap.css"
 web_include_css = [
 	"assets/css/frappe-web.css"
 ]
+
 website_route_rules = [
 	{"from_route": "/blog/<category>", "to_route": "Blog Post"},
-	{"from_route": "/kb/<category>", "to_route": "Help Article"}
+	{"from_route": "/kb/<category>", "to_route": "Help Article"},
+	{"from_route": "/newsletters", "to_route": "Newsletter"}
 ]
 
 write_file_keys = ["file_url", "file_name"]
@@ -79,8 +83,8 @@ permission_query_conditions = {
 	"User": "frappe.core.doctype.user.user.get_permission_query_conditions",
 	"Note": "frappe.desk.doctype.note.note.get_permission_query_conditions",
 	"Kanban Board": "frappe.desk.doctype.kanban_board.kanban_board.get_permission_query_conditions",
-	"Contact": "frappe.geo.address_and_contact.get_permission_query_conditions_for_contact",
-	"Address": "frappe.geo.address_and_contact.get_permission_query_conditions_for_address",
+	"Contact": "frappe.contacts.address_and_contact.get_permission_query_conditions_for_contact",
+	"Address": "frappe.contacts.address_and_contact.get_permission_query_conditions_for_address",
 	"Communication": "frappe.core.doctype.communication.communication.get_permission_query_conditions_for_communication"
 }
 
@@ -90,13 +94,13 @@ has_permission = {
 	"User": "frappe.core.doctype.user.user.has_permission",
 	"Note": "frappe.desk.doctype.note.note.has_permission",
 	"Kanban Board": "frappe.desk.doctype.kanban_board.kanban_board.has_permission",
-	"Contact": "frappe.geo.address_and_contact.has_permission",
-	"Address": "frappe.geo.address_and_contact.has_permission",
+	"Contact": "frappe.contacts.address_and_contact.has_permission",
+	"Address": "frappe.contacts.address_and_contact.has_permission",
 	"Communication": "frappe.core.doctype.communication.communication.has_permission",
 }
 
 has_website_permission = {
-	"Address": "frappe.geo.doctype.address.address.has_website_permission"
+	"Address": "frappe.contacts.doctype.address.address.has_website_permission"
 }
 
 standard_queries = {
@@ -128,7 +132,8 @@ scheduler_events = {
 		"frappe.email.doctype.email_account.email_account.pull",
 		"frappe.email.doctype.email_account.email_account.notify_unreplied",
 		"frappe.oauth.delete_oauth2_data",
-		"frappe.integrations.doctype.razorpay_settings.razorpay_settings.capture_payment"
+		"frappe.integrations.doctype.razorpay_settings.razorpay_settings.capture_payment",
+		"frappe.twofactor.delete_all_barcodes_for_users"
 	],
 	"hourly": [
 		"frappe.model.utils.link_count.update_link_count",
@@ -149,10 +154,12 @@ scheduler_events = {
 		"frappe.utils.scheduler.restrict_scheduler_events_if_dormant",
 		"frappe.email.doctype.auto_email_report.auto_email_report.send_daily",
 		"frappe.core.doctype.feedback_request.feedback_request.delete_feedback_request",
-		"frappe.core.doctype.authentication_log.authentication_log.clear_authentication_logs",
+		"frappe.core.doctype.authentication_log.authentication_log.clear_authentication_logs"
+	],
+	"daily_long": [
 		"frappe.integrations.doctype.dropbox_settings.dropbox_settings.take_backups_daily"
 	],
-	"weekly": [
+	"weekly_long": [
 		"frappe.integrations.doctype.dropbox_settings.dropbox_settings.take_backups_weekly"
 	],
 	"monthly": [
@@ -187,3 +194,5 @@ bot_parsers = [
 
 setup_wizard_exception = "frappe.desk.page.setup_wizard.setup_wizard.email_setup_wizard_exception"
 before_write_file = "frappe.limits.validate_space_limit"
+
+otp_methods = ['OTP App','Email','SMS']

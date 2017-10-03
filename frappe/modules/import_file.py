@@ -33,8 +33,7 @@ def get_file_path(module, dt, dn):
 	return path
 
 def import_file_by_path(path, force=False, data_import=False, pre_process=None, ignore_version=None,
-		reset_permissions=False):
-	frappe.flags.in_import = True
+		reset_permissions=False, for_sync=False):
 	try:
 		docs = read_doc_from_file(path)
 	except IOError:
@@ -54,8 +53,10 @@ def import_file_by_path(path, force=False, data_import=False, pre_process=None, 
 
 			original_modified = doc.get("modified")
 
+			frappe.flags.in_import = True
 			import_doc(doc, force=force, data_import=data_import, pre_process=pre_process,
 				ignore_version=ignore_version, reset_permissions=reset_permissions)
+			frappe.flags.in_import = False
 
 			if original_modified:
 				# since there is a new timestamp on the file, update timestamp in
@@ -67,7 +68,6 @@ def import_file_by_path(path, force=False, data_import=False, pre_process=None, 
 						(doc['doctype'], '%s', '%s'),
 						(original_modified, doc['name']))
 
-	frappe.flags.in_import = False
 	return True
 
 def read_doc_from_file(path):
@@ -80,13 +80,15 @@ def read_doc_from_file(path):
 				print("bad json: {0}".format(path))
 				raise
 	else:
-		raise IOError, '%s missing' % path
+		raise IOError('%s missing' % path)
 
 	return doc
 
 ignore_values = {
 	"Report": ["disabled"],
-	"Print Format": ["disabled"]
+	"Print Format": ["disabled"],
+	"Email Alert": ["enabled"],
+	"Print Style": ["disabled"]
 }
 
 ignore_doctypes = [""]

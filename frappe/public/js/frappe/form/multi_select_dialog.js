@@ -23,7 +23,7 @@ frappe.ui.form.MultiSelectDialog = Class.extend({
 		let fields = [
 			{
 				fieldtype: "Data",
-				label: __("Search term"),
+				label: __("Search Term"),
 				fieldname: "search_term"
 			},
 			{
@@ -200,7 +200,7 @@ frappe.ui.form.MultiSelectDialog = Class.extend({
 
 		let date_val = this.dialog.fields_dict["date_range"].get_value();
 		if(date_val) {
-			filters[this.date_field] = ['Between', me.dialog.fields_dict["date_range"].parse(date_val)];
+			filters[this.date_field] = ['between', date_val];
 		}
 
 		let args = {

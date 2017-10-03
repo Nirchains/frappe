@@ -10,6 +10,8 @@ from frappe.geo.country_info import get_country_info
 from frappe.utils.file_manager import save_file
 from frappe.utils.password import update_password
 from werkzeug.useragents import UserAgent
+from . import install_fixtures
+from six import string_types
 
 @frappe.whitelist()
 def setup_complete(args):
@@ -53,6 +55,7 @@ def setup_complete(args):
 	else:
 		for hook in frappe.get_hooks("setup_wizard_success"):
 			frappe.get_attr(hook)(args)
+		install_fixtures.install()
 
 
 def update_system_settings(args):
@@ -84,6 +87,11 @@ def update_user_name(args):
 		first_name, last_name = first_name.split(' ', 1)
 
 	if args.get("email"):
+		if frappe.db.exists('User', args.get('email')):
+			# running again
+			return
+
+
 		args['name'] = args.get("email")
 
 		_mute_emails, frappe.flags.mute_emails = frappe.flags.mute_emails, True
@@ -120,14 +128,14 @@ def update_user_name(args):
 def process_args(args):
 	if not args:
 		args = frappe.local.form_dict
-	if isinstance(args, basestring):
+	if isinstance(args, string_types):
 		args = json.loads(args)
 
 	args = frappe._dict(args)
 
 	# strip the whitespace
 	for key, value in args.items():
-		if isinstance(value, basestring):
+		if isinstance(value, string_types):
 			args[key] = strip(value)
 
 	return args
@@ -143,6 +151,7 @@ def add_all_roles_to(name):
 def disable_future_access():
 	frappe.db.set_default('desktop:home_page', 'desktop')
 	frappe.db.set_value('System Settings', 'System Settings', 'setup_complete', 1)
+	frappe.db.set_value('System Settings', 'System Settings', 'is_first_startup', 1)
 
 	if not frappe.flags.in_test:
 		# remove all roles and add 'Administrator' to prevent future access
@@ -172,16 +181,36 @@ def load_messages(language):
 
 @frappe.whitelist()
 def load_languages():
+	language_codes = frappe.db.sql('select language_code, language_name from tabLanguage order by name', as_dict=True)
+	codes_to_names = {}
+	for d in language_codes:
+		codes_to_names[d.language_code] = d.language_name
 	return {
 		"default_language": frappe.db.get_value('Language', frappe.local.lang, 'language_name') or frappe.local.lang,
-		"languages": sorted(frappe.db.sql_list('select language_name from tabLanguage order by name'))
+		"languages": sorted(frappe.db.sql_list('select language_name from tabLanguage order by name')),
+		"codes_to_names": codes_to_names
 	}
 
+@frappe.whitelist()
+def load_country():
+	from frappe.sessions import get_geo_ip_country
+	return get_geo_ip_country(frappe.local.request_ip) if frappe.local.request_ip else None
+
+@frappe.whitelist()
+def load_user_details():
+	return {
+		"full_name": frappe.cache().hget("full_name", "signup"),
+		"email": frappe.cache().hget("email", "signup")
+	}
+
+@frappe.whitelist()
+def reset_is_first_startup():
+	frappe.db.set_value('System Settings', 'System Settings', 'is_first_startup', 0)
 
 def prettify_args(args):
 	# remove attachments
 	for key, val in args.items():
-		if isinstance(val, basestring) and "data:image" in val:
+		if isinstance(val, string_types) and "data:image" in val:
 			filename = val.split("data:image", 1)[0].strip(", ")
 			size = round((len(val) * 3 / 4) / 1048576.0, 2)
 			args[key] = "Image Attached: '{0}' of size {1} MB".format(filename, size)
@@ -244,3 +273,10 @@ def email_setup_wizard_exception(traceback, args):
 
 def get_language_code(lang):
 	return frappe.db.get_value('Language', {'language_name':lang})
+
+
+def enable_twofactor_all_roles():
+	all_role = frappe.get_doc('Role',{'role_name':'All'})
+	all_role.two_factor_auth = True
+	all_role.save(ignore_permissions=True)
+

@@ -21,10 +21,6 @@ frappe.ui.keys.get_key = function(e) {
 	var keycode = e.keyCode || e.which;
 	var key = frappe.ui.keys.key_map[keycode] || String.fromCharCode(keycode);
 
-	if(key.substr(0, 5) === 'Arrow') {
-		// ArrowDown -> down
-		key = key.substr(5).toLowerCase();
-	}
 	if(e.ctrlKey || e.metaKey) {
 		// add ctrl+ the key
 		key = 'ctrl+' + key;
@@ -72,7 +68,7 @@ frappe.ui.keys.on('esc', function(e) {
 	close_grid_and_dialog();
 });
 
-frappe.ui.keys.on('Enter', function(e) {
+frappe.ui.keys.on('enter', function(e) {
 	if(cur_dialog && cur_dialog.confirm_dialog) {
 		cur_dialog.get_primary_btn().trigger('click');
 	}
@@ -100,7 +96,12 @@ frappe.ui.keys.key_map = {
 	17: 'ctrl',
 	91: 'meta',
 	18: 'alt',
-	27: 'escape'
+	27: 'escape',
+	37: 'left',
+	39: 'right',
+	38: 'up',
+	40: 'down',
+	32: 'space'
 }
 
 // keyCode map

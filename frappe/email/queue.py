@@ -4,30 +4,34 @@
 from __future__ import unicode_literals
 from six.moves import range
 import frappe
-import HTMLParser
-import smtplib, quopri
+from six.moves import html_parser as HTMLParser
+import smtplib, quopri, json
 from frappe import msgprint, throw, _
 from frappe.email.smtp import SMTPServer, get_outgoing_email_account
-from frappe.email.email_body import get_email, get_formatted_html
+from frappe.email.email_body import get_email, get_formatted_html, add_attachment
 from frappe.utils.verified_command import get_signed_params, verify_request
 from html2text import html2text
 from frappe.utils import get_url, nowdate, encode, now_datetime, add_days, split_emails, cstr, cint
+from frappe.utils.file_manager import get_file
 from rq.timeouts import JobTimeoutException
 from frappe.utils.scheduler import log
+from six import text_type, string_types
 
 class EmailLimitCrossedError(frappe.ValidationError): pass
 
-def send(recipients=None, sender=None, subject=None, message=None, reference_doctype=None,
+def send(recipients=None, sender=None, subject=None, message=None, text_content=None, reference_doctype=None,
 		reference_name=None, unsubscribe_method=None, unsubscribe_params=None, unsubscribe_message=None,
 		attachments=None, reply_to=None, cc=[], message_id=None, in_reply_to=None, send_after=None,
 		expose_recipients=None, send_priority=1, communication=None, now=False, read_receipt=None,
-		queue_separately=False, is_notification=False, add_unsubscribe_link=1):
+		queue_separately=False, is_notification=False, add_unsubscribe_link=1, inline_images=None,
+		header=None):
 	"""Add email to sending queue (Email Queue)
 
 	:param recipients: List of recipients.
 	:param sender: Email sender.
 	:param subject: Email subject.
 	:param message: Email message.
+	:param text_content: Text version of email message.
 	:param reference_doctype: Reference DocType of caller document.
 	:param reference_name: Reference name of caller document.
 	:param send_priority: Priority for Email Queue, default 1.
@@ -42,6 +46,8 @@ def send(recipients=None, sender=None, subject=None, message=None, reference_doc
 	:param queue_separately: Queue each email separately
 	:param is_notification: Marks email as notification so will not trigger notifications from system
 	:param add_unsubscribe_link: Send unsubscribe link in the footer of the Email, default 1.
+	:param inline_images: List of inline images as {"filename", "filecontent"}. All src properties will be replaced with random Content-Id
+	:param header: Append header in email (boolean)
 	"""
 	if not unsubscribe_method:
 		unsubscribe_method = "/api/method/frappe.email.queue.unsubscribe"
@@ -49,27 +55,26 @@ def send(recipients=None, sender=None, subject=None, message=None, reference_doc
 	if not recipients and not cc:
 		return
 
-	if isinstance(recipients, basestring):
+	if isinstance(recipients, string_types):
 		recipients = split_emails(recipients)
 
-	if isinstance(cc, basestring):
+	if isinstance(cc, string_types):
 		cc = split_emails(cc)
 
 	if isinstance(send_after, int):
 		send_after = add_days(nowdate(), send_after)
 
-	email_account = get_outgoing_email_account(True, append_to=reference_doctype)
+	email_account = get_outgoing_email_account(True, append_to=reference_doctype, sender=sender)
 	if not sender or sender == "Administrator":
 		sender = email_account.default_sender
 
 	check_email_limit(recipients)
 
-	formatted = get_formatted_html(subject, message, email_account=email_account)
-
-	try:
-		text_content = html2text(formatted)
-	except HTMLParser.HTMLParseError:
-		text_content = "See html attachment"
+	if not text_content:
+		try:
+			text_content = html2text(message)
+		except HTMLParser.HTMLParseError:
+			text_content = "See html attachment"
 
 	if reference_doctype and reference_name:
 		unsubscribed = [d.email for d in frappe.db.get_all("Email Unsubscribe", "email",
@@ -82,13 +87,21 @@ def send(recipients=None, sender=None, subject=None, message=None, reference_doc
 
 	recipients = [r for r in list(set(recipients)) if r and r not in unsubscribed]
 
-	email_content = formatted
 	email_text_context = text_content
 
-	if add_unsubscribe_link and reference_doctype and (unsubscribe_message or reference_doctype=="Newsletter") and add_unsubscribe_link==1:
+	should_append_unsubscribe = (add_unsubscribe_link
+		and reference_doctype
+		and (unsubscribe_message or reference_doctype=="Newsletter")
+		and add_unsubscribe_link==1)
+
+	unsubscribe_link = None
+	if should_append_unsubscribe:
 		unsubscribe_link = get_unsubscribe_message(unsubscribe_message, expose_recipients)
-		email_content = email_content.replace("<!--unsubscribe link here-->", unsubscribe_link.html)
 		email_text_context += unsubscribe_link.text
+
+	email_content = get_formatted_html(subject, message,
+		email_account=email_account, header=header,
+		unsubscribe_link=unsubscribe_link)
 
 	# add to queue
 	add(recipients, sender, subject,
@@ -112,6 +125,8 @@ def send(recipients=None, sender=None, subject=None, message=None, reference_doc
 		read_receipt=read_receipt,
 		queue_separately=queue_separately,
 		is_notification = is_notification,
+		inline_images = inline_images,
+		header=header,
 		now=now)
 
 
@@ -141,6 +156,14 @@ def get_email_queue(recipients, sender, subject, **kwargs):
 	'''Make Email Queue object'''
 	e = frappe.new_doc('Email Queue')
 	e.priority = kwargs.get('send_priority')
+	attachments = kwargs.get('attachments')
+	if attachments:
+		# store attachments with fid, to be attached on-demand later
+		_attachments = []
+		for att in attachments:
+			if att.get('fid'):
+				_attachments.append(att)
+		e.attachments = json.dumps(_attachments)
 
 	try:
 		mail = get_email(recipients,
@@ -152,7 +175,9 @@ def get_email_queue(recipients, sender, subject, **kwargs):
 			reply_to=kwargs.get('reply_to'),
 			cc=kwargs.get('cc'),
 			email_account=kwargs.get('email_account'),
-			expose_recipients=kwargs.get('expose_recipients'))
+			expose_recipients=kwargs.get('expose_recipients'),
+			inline_images=kwargs.get('inline_images'),
+			header=kwargs.get('header'))
 
 		mail.set_message_id(kwargs.get('message_id'),kwargs.get('is_notification'))
 		if kwargs.get('read_receipt'):
@@ -193,9 +218,18 @@ def check_email_limit(recipients):
 		or frappe.flags.in_test):
 
 		monthly_email_limit = frappe.conf.get('limits', {}).get('emails')
+		daily_email_limit = cint(frappe.conf.get('limits', {}).get('daily_emails'))
 
 		if frappe.flags.in_test:
 			monthly_email_limit = 500
+			daily_email_limit = 50
+
+		if daily_email_limit:
+			# get count of sent mails in last 24 hours
+			today = get_emails_sent_today()
+			if (today + len(recipients)) > daily_email_limit:
+				throw(_("Cannot send this email. You have crossed the sending limit of {0} emails for this day.").format(daily_email_limit),
+					EmailLimitCrossedError)
 
 		if not monthly_email_limit:
 			return
@@ -211,18 +245,26 @@ def get_emails_sent_this_month():
 	return frappe.db.sql("""select count(name) from `tabEmail Queue` where
 		status='Sent' and MONTH(creation)=MONTH(CURDATE())""")[0][0]
 
-def get_unsubscribe_message(unsubscribe_message, expose_recipients):
-	if not unsubscribe_message:
-		unsubscribe_message = _("Unsubscribe from this list")
+def get_emails_sent_today():
+	return frappe.db.sql("""select count(name) from `tabEmail Queue` where
+		status='Sent' and creation>DATE_SUB(NOW(), INTERVAL 24 HOUR)""")[0][0]
 
-	html = """<div style="margin: 15px auto; padding: 0px 7px; text-align: center; color: #8d99a6;">
+def get_unsubscribe_message(unsubscribe_message, expose_recipients):
+	if unsubscribe_message:
+		unsubscribe_html = '''<a href="<!--unsubscribe url-->"
+			target="_blank">{0}</a>'''.format(unsubscribe_message)
+	else:
+		unsubscribe_link = '''<a href="<!--unsubscribe url-->"
+			target="_blank">{0}</a>'''.format(_('Unsubscribe'))
+		unsubscribe_html = _("{0} to stop receiving emails of this type").format(unsubscribe_link)
+
+	html = """<div class="email-unsubscribe">
 			<!--cc message-->
-			<p style="margin: 15px auto;">
-				<a href="<!--unsubscribe url-->" style="color: #8d99a6; text-decoration: underline;
-					target="_blank">{unsubscribe_message}
-				</a>
-			</p>
-		</div>""".format(unsubscribe_message=unsubscribe_message)
+			<div>
+				{0}
+			</div>
+		</div>""".format(unsubscribe_html)
+
 	if expose_recipients == "footer":
 		text = "\n<!--cc message-->"
 	else:
@@ -328,7 +370,7 @@ def send_one(email, smtpserver=None, auto_commit=True, now=False, from_test=Fals
 	email = frappe.db.sql('''select
 			name, status, communication, message, sender, reference_doctype,
 			reference_name, unsubscribe_param, unsubscribe_method, expose_recipients,
-			show_as_cc, add_unsubscribe_link
+			show_as_cc, add_unsubscribe_link, attachments
 		from
 			`tabEmail Queue`
 		where
@@ -359,7 +401,7 @@ def send_one(email, smtpserver=None, auto_commit=True, now=False, from_test=Fals
 	try:
 		if not frappe.flags.in_test:
 			if not smtpserver: smtpserver = SMTPServer()
-			smtpserver.setup_email_account(email.reference_doctype)
+			smtpserver.setup_email_account(email.reference_doctype, sender=email.sender)
 
 		for recipient in recipients_list:
 			if recipient.status != "Not Sent":
@@ -412,23 +454,27 @@ def send_one(email, smtpserver=None, auto_commit=True, now=False, from_test=Fals
 
 		if any("Sent" == s.status for s in recipients_list):
 			frappe.db.sql("""update `tabEmail Queue` set status='Partially Errored', error=%s where name=%s""",
-				(unicode(e), email.name), auto_commit=auto_commit)
+				(text_type(e), email.name), auto_commit=auto_commit)
 		else:
 			frappe.db.sql("""update `tabEmail Queue` set status='Error', error=%s
-where name=%s""", (unicode(e), email.name), auto_commit=auto_commit)
+where name=%s""", (text_type(e), email.name), auto_commit=auto_commit)
 
 		if email.communication:
 			frappe.get_doc('Communication', email.communication).set_delivery_status(commit=auto_commit)
 
 		if now:
+			print(frappe.get_traceback())
 			raise e
 
 		else:
 			# log to Error Log
-			log('frappe.email.queue.flush', unicode(e))
+			log('frappe.email.queue.flush', text_type(e))
 
 def prepare_message(email, recipient, recipients_list):
 	message = email.message
+	if not message:
+		return ""
+
 	if email.add_unsubscribe_link and email.reference_doctype: # is missing the check for unsubscribe message but will not add as there will be no unsubscribe url
 		unsubscribe_url = get_unsubcribed_url(email.reference_doctype, email.reference_name, recipient,
 		email.unsubscribe_method, email.unsubscribe_params)
@@ -438,7 +484,7 @@ def prepare_message(email, recipient, recipients_list):
 		pass
 	else:
 		if email.expose_recipients == "footer":
-			if isinstance(email.show_as_cc, basestring):
+			if isinstance(email.show_as_cc, string_types):
 				email.show_as_cc = email.show_as_cc.split(",")
 			email_sent_to = [r.recipient for r in recipients_list]
 			email_sent_cc = ", ".join([e for e in email_sent_to if e in email.show_as_cc])
@@ -451,14 +497,51 @@ def prepare_message(email, recipient, recipients_list):
 			message = message.replace("<!--cc message-->", quopri.encodestring(email_sent_message))
 
 		message = message.replace("<!--recipient-->", recipient)
-	return message
+
+	message = (message and message.encode('utf8')) or ''
+	if not email.attachments:
+		return message
+
+	# On-demand attachments
+	from email.parser import Parser
+
+	msg_obj = Parser().parsestr(message)
+	attachments = json.loads(email.attachments)
+
+	for attachment in attachments:
+		if attachment.get('fcontent'): continue
+
+		fid = attachment.get('fid')
+		if not fid: continue
+
+		fname, fcontent = get_file(fid)
+		attachment.update({
+			'fname': fname,
+			'fcontent': fcontent,
+			'parent': msg_obj
+		})
+		attachment.pop("fid", None)
+		add_attachment(**attachment)
+
+	return msg_obj.as_string()
 
 def clear_outbox():
 	"""Remove low priority older than 31 days in Outbox and expire mails not sent for 7 days.
+	Called daily via scheduler.
+	Note: Used separate query to avoid deadlock
+	"""
 
-	Called daily via scheduler."""
-	frappe.db.sql("""delete q, r from `tabEmail Queue` as q, `tabEmail Queue Recipient` as r where q.name = r.parent and q.priority=0 and
-		datediff(now(), q.modified) > 31""")
+	email_queues = frappe.db.sql_list("""select name from `tabEmail Queue`
+		where priority=0 and datediff(now(), modified) > 31""")
 
-	frappe.db.sql("""update `tabEmail Queue` as q, `tabEmail Queue Recipient` as r set q.status='Expired', r.status='Expired'
-		where q.name = r.parent and datediff(curdate(), q.modified) > 7 and q.status='Not Sent' and r.status='Not Sent'""")
+	if email_queues:
+		frappe.db.sql("""delete from `tabEmail Queue` where name in (%s)"""
+			% ','.join(['%s']*len(email_queues)), tuple(email_queues))
+
+		frappe.db.sql("""delete from `tabEmail Queue Recipient` where parent in (%s)"""
+			% ','.join(['%s']*len(email_queues)), tuple(email_queues))
+
+	frappe.db.sql("""
+		update `tabEmail Queue`
+		set status='Expired'
+		where datediff(curdate(), modified) > 7 and status='Not Sent' and (send_after is null or send_after < %(now)s)""", { 'now': now_datetime() })

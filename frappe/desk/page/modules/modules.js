@@ -41,7 +41,7 @@ frappe.pages['modules'].on_page_load = function(wrapper) {
 	page.main.on("click", '.open-notification', function(event) {
 		var doctype = $(this).attr('data-doctype');
 		if(doctype) {
-			frappe.set_route('List', doctype, frappe.ui.notifications.get_filters(doctype));
+			frappe.ui.notifications.show_open_count_list(doctype);
 		}
 	});
 
@@ -63,7 +63,7 @@ frappe.pages['modules'].on_page_load = function(wrapper) {
 					module: module_name
 				},
 				callback: function(r) {
-					m = frappe.get_module(module_name);
+					var m = frappe.get_module(module_name);
 					m.data = r.message.data;
 					process_data(module_name, m.data);
 					page.section_data[module_name] = m;

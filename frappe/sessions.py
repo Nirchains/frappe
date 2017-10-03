@@ -17,8 +17,9 @@ import frappe.defaults
 import frappe.translate
 from frappe.utils.change_log import get_change_log
 import redis
-from urllib import unquote
+from six.moves.urllib.parse import unquote
 from frappe.desk.notifications import clear_notifications
+from six import text_type
 
 @frappe.whitelist()
 def clear(user=None):
@@ -32,7 +33,7 @@ def clear_cache(user=None):
 	cache = frappe.cache()
 
 	groups = ("bootinfo", "user_recent", "roles", "user_doc", "lang",
-		"defaults", "user_permissions", "roles", "home_page", "linked_with",
+		"defaults", "user_permissions", "home_page", "linked_with",
 		"desktop_icons", 'portal_menu_items')
 
 	if user:
@@ -162,6 +163,7 @@ def get():
 		# check only when clear cache is done, and don't cache this
 		if frappe.local.request:
 			bootinfo["change_log"] = get_change_log()
+			bootinfo["is_first_startup"] = cint(frappe.db.get_single_value('System Settings', 'is_first_startup'))
 
 	bootinfo["metadata_version"] = frappe.cache().get_value("metadata_version")
 	if not bootinfo["metadata_version"]:
@@ -360,7 +362,7 @@ class Session:
 		now = frappe.utils.now()
 
 		self.data['data']['last_updated'] = now
-		self.data['data']['lang'] = unicode(frappe.lang)
+		self.data['data']['lang'] = text_type(frappe.lang)
 
 		# update session in db
 		last_updated = frappe.cache().hget("last_db_session_update", self.sid)

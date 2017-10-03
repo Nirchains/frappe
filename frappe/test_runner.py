@@ -10,8 +10,9 @@ import importlib
 from frappe.modules import load_doctype_module, get_module_name
 from frappe.utils import cstr
 import frappe.utils.scheduler
-import cProfile, StringIO, pstats
-
+import cProfile, pstats
+from six import StringIO
+from six.moves import reload_module
 
 unittest_runner = unittest.TextTestRunner
 
@@ -22,7 +23,8 @@ def xmlrunner_wrapper(output):
 		return xmlrunner.XMLTestRunner(*args, **kwargs)
 	return _runner
 
-def main(app=None, module=None, doctype=None, verbose=False, tests=(), force=False, profile=False, junit_xml_output=None):
+def main(app=None, module=None, doctype=None, verbose=False, tests=(),
+	force=False, profile=False, junit_xml_output=None, ui_tests=False):
 	global unittest_runner
 
 	xmloutput_fh = None
@@ -57,7 +59,7 @@ def main(app=None, module=None, doctype=None, verbose=False, tests=(), force=Fal
 		elif module:
 			ret = run_tests_for_module(module, verbose, tests, profile)
 		else:
-			ret = run_all_tests(app, verbose, profile)
+			ret = run_all_tests(app, verbose, profile, ui_tests)
 
 		frappe.db.commit()
 
@@ -80,7 +82,7 @@ def set_test_email_config():
 		"admin_password": "admin"
 	})
 
-def run_all_tests(app=None, verbose=False, profile=False):
+def run_all_tests(app=None, verbose=False, profile=False, ui_tests=False):
 	import os
 
 	apps = [app] if app else frappe.get_installed_apps()
@@ -95,9 +97,11 @@ def run_all_tests(app=None, verbose=False, profile=False):
 			# print path
 			for filename in files:
 				filename = cstr(filename)
-				if filename.startswith("test_") and filename.endswith(".py"):
+				if filename.startswith("test_") and filename.endswith(".py")\
+					and filename != 'test_runner.py':
 					# print filename[:-3]
-					_add_test(app, path, filename, verbose, test_suite=test_suite)
+					_add_test(app, path, filename, verbose,
+						test_suite, ui_tests)
 
 	if profile:
 		pr = cProfile.Profile()
@@ -107,7 +111,7 @@ def run_all_tests(app=None, verbose=False, profile=False):
 
 	if profile:
 		pr.disable()
-		s = StringIO.StringIO()
+		s = StringIO()
 		ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
 		ps.print_stats()
 		print(s.getvalue())
@@ -125,7 +129,7 @@ def run_tests_for_doctype(doctype, verbose=False, tests=(), force=False, profile
 		for name in frappe.db.sql_list("select name from `tab%s`" % doctype):
 			frappe.delete_doc(doctype, name, force=True)
 	make_test_records(doctype, verbose=verbose, force=force)
-	module = frappe.get_module(test_module)
+	module = importlib.import_module(test_module)
 	return _run_unittest(module, verbose=verbose, tests=tests, profile=profile)
 
 def run_tests_for_module(module, verbose=False, tests=(), profile=False):
@@ -135,6 +139,18 @@ def run_tests_for_module(module, verbose=False, tests=(), profile=False):
 			make_test_records(doctype, verbose=verbose)
 
 	return _run_unittest(module=module, verbose=verbose, tests=tests, profile=profile)
+
+def run_setup_wizard_ui_test(app=None, verbose=False, profile=False):
+	'''Run setup wizard UI test using test_test_runner'''
+	frappe.flags.run_setup_wizard_ui_test = 1
+	return run_ui_tests(app, None, verbose, profile)
+
+def run_ui_tests(app=None, test=None, verbose=False, profile=False):
+	'''Run a single unit test for UI using test_test_runner'''
+	module = importlib.import_module('frappe.tests.ui.test_test_runner')
+	frappe.flags.ui_test_app = app
+	frappe.flags.ui_test_path = test
+	return _run_unittest(module=module, verbose=verbose, tests=(), profile=profile)
 
 def _run_unittest(module, verbose=False, tests=(), profile=False):
 	test_suite = unittest.TestSuite()
@@ -151,11 +167,13 @@ def _run_unittest(module, verbose=False, tests=(), profile=False):
 		pr = cProfile.Profile()
 		pr.enable()
 
+	frappe.flags.tests_verbose = verbose
+
 	out = unittest_runner(verbosity=1+(verbose and 1 or 0)).run(test_suite)
 
 	if profile:
 		pr.disable()
-		s = StringIO.StringIO()
+		s = StringIO()
 		ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
 		ps.print_stats()
 		print(s.getvalue())
@@ -163,7 +181,7 @@ def _run_unittest(module, verbose=False, tests=(), profile=False):
 	return out
 
 
-def _add_test(app, path, filename, verbose, test_suite=None):
+def _add_test(app, path, filename, verbose, test_suite=None, ui_tests=False):
 	import os
 
 	if os.path.sep.join(["doctype", "doctype", "boilerplate"]) in path:
@@ -178,9 +196,10 @@ def _add_test(app, path, filename, verbose, test_suite=None):
 		module_name = '{app}.{relative_path}.{module_name}'.format(app=app,
 			relative_path=relative_path.replace('/', '.'), module_name=filename[:-3])
 
-	module = frappe.get_module(module_name)
+	module = importlib.import_module(module_name)
+	is_ui_test = True if hasattr(module, 'TestDriver') else False
 
-	if getattr(module, "selenium_tests", False) and not frappe.conf.run_selenium_tests:
+	if is_ui_test != ui_tests:
 		return
 
 	if not test_suite:
@@ -215,7 +234,7 @@ def get_modules(doctype):
 	try:
 		test_module = load_doctype_module(doctype, module, "test_")
 		if test_module:
-			reload(test_module)
+			reload_module(test_module)
 	except ImportError:
 		test_module = None
 
@@ -253,12 +272,12 @@ def make_test_records_for_doctype(doctype, verbose=0, force=False):
 		frappe.local.test_objects[doctype] += test_module._make_test_records(verbose)
 
 	elif hasattr(test_module, "test_records"):
-		frappe.local.test_objects[doctype] += make_test_objects(doctype, test_module.test_records, verbose)
+		frappe.local.test_objects[doctype] += make_test_objects(doctype, test_module.test_records, verbose, force)
 
 	else:
 		test_records = frappe.get_test_records(doctype)
 		if test_records:
-			frappe.local.test_objects[doctype] += make_test_objects(doctype, test_records, verbose)
+			frappe.local.test_objects[doctype] += make_test_objects(doctype, test_records, verbose, force)
 
 		elif verbose:
 			print_mandatory_fields(doctype)
@@ -325,3 +344,5 @@ def print_mandatory_fields(doctype):
 	for d in meta.get("fields", {"reqd":1}):
 		print(d.parent + ":" + d.fieldname + " | " + d.fieldtype + " | " + (d.options or ""))
 	print()
+
+

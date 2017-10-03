@@ -18,7 +18,7 @@ frappe.ui.form.on('User', {
 
 	},
 	onload: function(frm) {
-		if(has_common(roles, ["Administrator", "System Manager"]) && !frm.doc.__islocal) {
+		if(has_common(frappe.user_roles, ["Administrator", "System Manager"]) && !frm.doc.__islocal) {
 			if(!frm.roles_editor) {
 				var role_area = $('<div style="min-height: 300px">')
 					.appendTo(frm.fields_dict.roles_html.wrapper);
@@ -35,11 +35,11 @@ frappe.ui.form.on('User', {
 	refresh: function(frm) {
 		var doc = frm.doc;
 
-		if(doc.name===user && !doc.__unsaved
+		if(doc.name===frappe.session.user && !doc.__unsaved
 			&& frappe.all_timezones
 			&& (doc.language || frappe.boot.user.language)
 			&& doc.language !== frappe.boot.user.language) {
-			msgprint(__("Refreshing..."));
+			frappe.msgprint(__("Refreshing..."));
 			window.location.reload();
 		}
 
@@ -53,14 +53,18 @@ frappe.ui.form.on('User', {
 				frappe.set_route("modules_setup");
 			}, null, "btn-default")
 
-			if(has_common(roles, ["Administrator", "System Manager"])) {
+			if(has_common(frappe.user_roles, ["Administrator", "System Manager"])) {
 
 				frm.add_custom_button(__("Set User Permissions"), function() {
 					frappe.route_options = {
 						"user": doc.name
 					};
-					frappe.set_route("user-permissions");
-				}, null, "btn-default")
+					frappe.set_route('List', 'User Permission');
+				}, __("Permissions"))
+
+				frm.add_custom_button(__('View Permitted Documents'),
+					() => frappe.set_route('query-report', 'Permitted Documents For User',
+						{user: frm.doc.name}), __("Permissions"));
 
 				frm.toggle_display(['sb1', 'sb3', 'modules_access'], true);
 			}
@@ -72,17 +76,26 @@ frappe.ui.form.on('User', {
 						"user": frm.doc.name
 					}
 				})
-			})
+			}, __("Password"));
+
+			frm.add_custom_button(__("Reset OTP Secret"), function() {
+				frappe.call({
+					method: "frappe.core.doctype.user.user.reset_otp_secret",
+					args: {
+						"user": frm.doc.name
+					}
+				})
+			}, __("Password"));
 
 			frm.trigger('enabled');
 
 			frm.roles_editor && frm.roles_editor.show();
 			frm.module_editor && frm.module_editor.refresh();
 
-			if(user==doc.name) {
+			if(frappe.session.user==doc.name) {
 				// update display settings
 				if(doc.user_image) {
-					frappe.boot.user_info[user].image = frappe.utils.get_file_link(doc.user_image);
+					frappe.boot.user_info[frappe.session.user].image = frappe.utils.get_file_link(doc.user_image);
 				}
 			}
 		}
@@ -102,12 +115,12 @@ frappe.ui.form.on('User', {
 
 		if (frappe.route_flags.unsaved===1){
 			delete frappe.route_flags.unsaved;
-			for ( var i=0;i<frm.doc.user_emails.length;i++){
+			for ( var i=0;i<frm.doc.user_emails.length;i++) {
 				frm.doc.user_emails[i].idx=frm.doc.user_emails[i].idx+1;
 			}
-			frm.doc.email_account
-		cur_frm.dirty();
+			cur_frm.dirty();
 		}
+
 	},
 	validate: function(frm) {
 		if(frm.roles_editor) {
@@ -116,12 +129,12 @@ frappe.ui.form.on('User', {
 	},
 	enabled: function(frm) {
 		var doc = frm.doc;
-		if(!doc.__islocal && has_common(roles, ["Administrator", "System Manager"])) {
+		if(!doc.__islocal && has_common(frappe.user_roles, ["Administrator", "System Manager"])) {
 			frm.toggle_display(['sb1', 'sb3', 'modules_access'], doc.enabled);
 			frm.set_df_property('enabled', 'read_only', 0);
 		}
 
-		if(user!="Administrator") {
+		if(frappe.session.user!=="Administrator") {
 			frm.toggle_enable('email', doc.__islocal);
 		}
 	},
@@ -177,6 +190,7 @@ frappe.ModuleEditor = Class.extend({
 		});
 	},
 	bind: function() {
+		var me = this;
 		this.wrapper.on("change", ".block-module-check", function() {
 			var module = $(this).attr('data-module');
 			if($(this).prop("checked")) {

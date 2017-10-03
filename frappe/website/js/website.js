@@ -12,7 +12,7 @@ $.extend(frappe, {
 	_assets_loaded: [],
 	require: function(url) {
 		if(frappe._assets_loaded.indexOf(url)!==-1) return;
-		$.ajax({
+		return $.ajax({
 			url: url,
 			async: false,
 			dataType: "text",
@@ -159,12 +159,9 @@ $.extend(frappe, {
 			.html('<div class="content"><i class="'+icon+' text-muted"></i><br>'
 				+text+'</div>').appendTo(document.body);
 	},
-	hide_message: function(text) {
-		$('.message-overlay').remove();
-	},
 	get_sid: function() {
 		var sid = getCookie("sid");
-		return sid && sid!=="Guest";
+		return sid && sid !== "Guest";
 	},
 	get_modal: function(title, body_html) {
 		var modal = $('<div class="modal" style="overflow: auto;" tabindex="-1">\
@@ -325,6 +322,9 @@ $.extend(frappe, {
 	},
 	is_user_logged_in: function() {
 		return window.full_name ? true : false;
+	},
+	add_switch_to_desk: function() {
+		$('.switch-to-desk').removeClass('hidden');
 	}
 });
 
@@ -366,7 +366,7 @@ function ask_to_login() {
 // check if logged in?
 $(document).ready(function() {
 	window.full_name = getCookie("full_name");
-	window.logged_in = getCookie("sid") && getCookie("sid")!=="Guest";
+	var logged_in = getCookie("sid") && getCookie("sid") !== "Guest";
 	$("#website-login").toggleClass("hide", logged_in ? true : false);
 	$("#website-post-login").toggleClass("hide", logged_in ? false : true);
 	$(".logged-in").toggleClass("hide", logged_in ? false : true);
@@ -375,10 +375,7 @@ $(document).ready(function() {
 
 	// switch to app link
 	if(getCookie("system_user")==="yes" && logged_in) {
-		$("#website-post-login .dropdown-menu").append('<li><a href="/desk">'
-			+__('Switch To Desk')+'</a></li>');
-		$(".navbar-header .dropdown:not(.dropdown-submenu) > .dropdown-menu")
-			.append('<li><a href="/desk">'+__('Switch To Desk')+'</a></li>');
+		frappe.add_switch_to_desk();
 	}
 
 	frappe.render_user();

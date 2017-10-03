@@ -39,7 +39,7 @@ def make_boilerplate(dest, app_name):
 
 			if hook_key=="app_name" and hook_val.lower().replace(" ", "_") != hook_val:
 				print("App Name must be all lowercase and without spaces")
-  				hook_val = ""
+				hook_val = ""
 			elif hook_key=="app_title" and not re.match("^(?![\W])[^\d_\s][\w -]+$", hook_val, re.UNICODE):
 				print("App Title should start with a letter and it can only consist of letters, numbers, spaces and underscores")
 				hook_val = ""
@@ -156,6 +156,7 @@ app_license = "{app_license}"
 # doctype_js = {{"doctype" : "public/js/doctype.js"}}
 # doctype_list_js = {{"doctype" : "public/js/doctype_list.js"}}
 # doctype_tree_js = {{"doctype" : "public/js/doctype_tree.js"}}
+# doctype_calendar_js = {{"doctype" : "public/js/doctype_calendar.js"}}
 
 # Home Pages
 # ----------

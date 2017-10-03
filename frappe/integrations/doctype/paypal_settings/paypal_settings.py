@@ -60,9 +60,8 @@ import frappe
 import json
 from frappe import _
 from frappe.utils import get_url, call_hook_method, cint
-from urllib import urlencode
+from six.moves.urllib.parse import urlencode
 from frappe.model.document import Document
-import urllib
 from frappe.integrations.utils import create_request_log, make_post_request, create_payment_gateway
 
 class PayPalSettings(Document):
@@ -156,7 +155,7 @@ class PayPalSettings(Document):
 
 		response = make_post_request(url, data=params.encode("utf-8"))
 		if response.get("ACK")[0] != "Success":
-			frappe.throw("Looks like something is wrong with this site's Paypal configuration.")
+			frappe.throw(_("Looks like something is wrong with this site's Paypal configuration."))
 
 		return response
 
@@ -237,9 +236,9 @@ def confirm_payment(token):
 			redirect_url = "/integrations/payment-failed"
 
 		if redirect_to:
-			redirect_url += '?' + urllib.urlencode({'redirect_to': redirect_to})
+			redirect_url += '?' + urlencode({'redirect_to': redirect_to})
 		if redirect_message:
-			redirect_url += '&' + urllib.urlencode({'redirect_message': redirect_message})
+			redirect_url += '&' + urlencode({'redirect_message': redirect_message})
 
 		# this is done so that functions called via hooks can update flags.redirect_to
 		if redirect:

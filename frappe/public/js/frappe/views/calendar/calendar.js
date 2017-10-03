@@ -12,7 +12,7 @@ frappe.views.CalendarView = frappe.views.ListRenderer.extend({
 			doctype: this.doctype,
 			parent: this.wrapper,
 			page: this.list_view.page,
-			filter_vals: this.list_view.filter_list.get_filters()
+			list_view: this.list_view
 		}
 		$.extend(options, frappe.views.calendar[this.doctype]);
 		this.calendar = new frappe.views.Calendar(options);
@@ -45,6 +45,7 @@ frappe.views.Calendar = Class.extend({
 		var me = this;
 
 		// add links to other calendars
+		me.page.clear_user_actions();
 		$.each(frappe.boot.calendars, function(i, doctype) {
 			if(frappe.model.can_read(doctype)) {
 				me.page.add_menu_item(__(doctype), function() {
@@ -99,7 +100,8 @@ frappe.views.Calendar = Class.extend({
 	color_map: {
 		"danger": "red",
 		"success": "green",
-		"warning": "orange"
+		"warning": "orange",
+		"default": "blue"
 	},
 	get_system_datetime: function(date) {
 		date._offset = moment.user_utc_offset;
@@ -196,19 +198,11 @@ frappe.views.Calendar = Class.extend({
 		}
 	},
 	get_args: function(start, end) {
-		if(this.filter_vals) {
-			var filters = {};
-			this.filter_vals.forEach(function(f) {
-				if(f[2]==="=") {
-					filters[f[1]] = f[3];
-				}
-			});
-		}
 		var args = {
 			doctype: this.doctype,
 			start: this.get_system_datetime(start),
 			end: this.get_system_datetime(end),
-			filters: filters
+			filters: this.list_view.filter_list.get_filters()
 		};
 		return args;
 	},
@@ -239,22 +233,29 @@ frappe.views.Calendar = Class.extend({
 			d.end = frappe.datetime.convert_to_user_tz(d.end);
 
 			me.fix_end_date_for_event_render(d);
-
-			let color;
-			if(me.get_css_class) {
-				color = me.color_map[me.get_css_class(d)];
-				// if invalid, fallback to blue color
-				if(!Object.values(me.color_map).includes(color)) {
-					color = "blue";
-				}
-			} else {
-				// color field can be set in {doctype}_calendar.js
-				// see event_calendar.js
-				color = d.color;
-			}
-			d.className = "fc-bg-" + color;
+			me.prepare_colors(d);
 			return d;
 		});
+	},
+	prepare_colors: function(d) {
+		let color, color_name;
+		if(this.get_css_class) {
+			color_name = this.color_map[this.get_css_class(d)];
+			color_name =
+				frappe.ui.color.validate_hex(color_name) ?
+					color_name :
+					'blue';
+			d.backgroundColor = frappe.ui.color.get(color_name, 'extra-light');
+			d.textColor = frappe.ui.color.get(color_name, 'dark');
+		} else {
+			color = d.color;
+			if (!frappe.ui.color.validate_hex(color) || !color) {
+				color = frappe.ui.color.get('blue', 'extra-light');
+			}
+			d.backgroundColor = color;
+			d.textColor = frappe.ui.color.get_contrast_color(color);
+		}
+		return d;
 	},
 	update_event: function(event, revertFunc) {
 		var me = this;
@@ -264,7 +265,7 @@ frappe.views.Calendar = Class.extend({
 			args: me.get_update_args(event),
 			callback: function(r) {
 				if(r.exc) {
-					show_alert(__("Unable to update event"));
+					frappe.show_alert(__("Unable to update event"));
 					revertFunc();
 				}
 			},
@@ -306,51 +307,6 @@ frappe.views.Calendar = Class.extend({
 			// We use inclusive end dates. This workaround fixes the rendering of events
 			event.start = event.start ? $.fullCalendar.moment(event.start).stripTime() : null;
 			event.end = event.end ? $.fullCalendar.moment(event.end).add(1, "day").stripTime() : null;
-		}
-	},
-	add_filters: function() {
-		var me = this;
-		if(this.filters) {
-			$.each(this.filters, function(i, df) {
-				df.change = function() {
-					me.refresh();
-				};
-				me.page.add_field(df);
-			});
-		}
-	},
-	set_filter: function(doctype, value) {
-		var me = this;
-		if(this.filters) {
-			$.each(this.filters, function(i, df) {
-				if(df.options===value)
-					me.page.fields_dict[df.fieldname].set_input(value);
-					return false;
-			});
-		}
-	},
-	get_filters: function() {
-		var filter_vals = {},
-			me = this;
-		if(this.filters) {
-			$.each(this.filters, function(i, df) {
-				filter_vals[df.fieldname || df.label] =
-					me.page.fields_dict[df.fieldname || df.label].get_parsed_value();
-			});
-		}
-		return filter_vals;
-	},
-	set_filters_from_route_options: function() {
-		var me = this;
-		if(frappe.route_options) {
-			$.each(frappe.route_options, function(k, value) {
-				if(me.page.fields_dict[k]) {
-					me.page.fields_dict[k].set_input(value);
-				};
-			})
-			frappe.route_options = null;
-			me.refresh();
-			return false;
 		}
 	}
 })

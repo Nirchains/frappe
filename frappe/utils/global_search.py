@@ -7,6 +7,7 @@ import frappe
 import re
 from frappe.utils import cint, strip_html_tags
 from frappe.model.base_document import get_controller
+from six import text_type
 
 def setup_global_search_table():
 	'''Creates __global_seach table'''
@@ -218,9 +219,9 @@ def update_global_search(doc):
 	# Get children
 	for child in doc.meta.get_table_fields():
 		for d in doc.get(child.fieldname):
-		  	if d.parent == doc.name:
-		  		for field in d.meta.get_global_search_fields():
-		  			if d.get(field.fieldname):
+			if d.parent == doc.name:
+				for field in d.meta.get_global_search_fields():
+					if d.get(field.fieldname):
 						content.append(get_formatted_value(d.get(field.fieldname), field))
 
 	if content:
@@ -235,20 +236,25 @@ def update_global_search(doc):
 def get_formatted_value(value, field):
 	'''Prepare field from raw data'''
 
-	from HTMLParser import HTMLParser
+	from six.moves.html_parser import HTMLParser
 
 	if(getattr(field, 'fieldtype', None) in ["Text", "Text Editor"]):
 		h = HTMLParser()
 		value = h.unescape(value)
-		value = (re.subn(r'<[\s]*(script|style).*?</\1>(?s)', '', unicode(value))[0])
+		value = (re.subn(r'<[\s]*(script|style).*?</\1>(?s)', '', text_type(value))[0])
 		value = ' '.join(value.split())
-	return field.label + " : " + strip_html_tags(unicode(value))
+	return field.label + " : " + strip_html_tags(text_type(value))
 
-def sync_global_search():
-	'''Add values from `frappe.flags.update_global_search` to __global_search.
+def sync_global_search(flags=None):
+	'''Add values from `flags` (frappe.flags.update_global_search) to __global_search.
 		This is called internally at the end of the request.'''
 
-	for value in frappe.flags.update_global_search:
+	if not flags:
+		flags = frappe.flags.update_global_search
+
+	# Can pass flags manually as frappe.flags.update_global_search isn't reliable at a later time,
+	# when syncing is enqueued
+	for value in flags:
 		frappe.db.sql('''
 			insert into __global_search
 				(doctype, name, content, published, title, route)
@@ -301,9 +307,11 @@ def search(text, start=0, limit=20, doctype=""):
 			limit {start}, {limit}'''.format(start=start, limit=limit), (doctype, text), as_dict=True)
 
 	for r in results:
-		if frappe.get_meta(r.doctype).image_field:
-			doc = frappe.get_doc(r.doctype, r.name)
-			r.image = doc.get(doc.meta.image_field)
+		try:
+			if frappe.get_meta(r.doctype).image_field:
+				r.image = frappe.db.get_value(r.doctype, r.name, frappe.get_meta(r.doctype).image_field)
+		except Exception:
+			frappe.clear_messages()
 
 	return results
 

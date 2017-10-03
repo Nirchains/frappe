@@ -4,12 +4,12 @@
 from __future__ import unicode_literals, print_function
 import frappe
 import time
-import redis
 from frappe import _, msgprint
 from frappe.utils import flt, cstr, now, get_datetime_str, file_lock
 from frappe.utils.background_jobs import enqueue
 from frappe.model.base_document import BaseDocument, get_controller
 from frappe.model.naming import set_new_name
+from six import iteritems, string_types
 from werkzeug.exceptions import NotFound, Forbidden
 import hashlib, json
 from frappe.model import optional_fields
@@ -41,7 +41,7 @@ def get_doc(arg1, arg2=None):
 	"""
 	if isinstance(arg1, BaseDocument):
 		return arg1
-	elif isinstance(arg1, basestring):
+	elif isinstance(arg1, string_types):
 		doctype = arg1
 	else:
 		doctype = arg1.get("doctype")
@@ -67,7 +67,7 @@ class Document(BaseDocument):
 		self._default_new_docs = {}
 		self.flags = frappe._dict()
 
-		if arg1 and isinstance(arg1, basestring):
+		if arg1 and isinstance(arg1, string_types):
 			if not arg2:
 				# single
 				self.doctype = self.name = arg1
@@ -189,6 +189,7 @@ class Document(BaseDocument):
 		self.validate_higher_perm_levels()
 
 		self.flags.in_insert = True
+		self._validate_links()
 		self.run_before_save_methods()
 		self._validate()
 		self.set_docstatus()
@@ -260,6 +261,7 @@ class Document(BaseDocument):
 		self.check_if_latest()
 		self.set_parent_in_children()
 		self.validate_higher_perm_levels()
+		self._validate_links()
 		self.run_before_save_methods()
 
 		if self._action != "cancel":
@@ -328,6 +330,11 @@ class Document(BaseDocument):
 				and parenttype=%s and parentfield=%s""".format(df.options),
 				(self.name, self.doctype, fieldname))
 
+	def get_doc_before_save(self):
+		if not getattr(self, '_doc_before_save', None):
+			self._doc_before_save = frappe.get_doc(self.doctype, self.name)
+		return self._doc_before_save
+
 	def set_new_name(self):
 		"""Calls `frappe.naming.se_new_name` for parent and child docs."""
 		set_new_name(self)
@@ -344,7 +351,7 @@ class Document(BaseDocument):
 		def get_values():
 			values = self.as_dict()
 			# format values
-			for key, value in values.iteritems():
+			for key, value in iteritems(values):
 				if value==None:
 					values[key] = ""
 			return values
@@ -361,7 +368,7 @@ class Document(BaseDocument):
 	def update_single(self, d):
 		"""Updates values for Single type Document in `tabSingles`."""
 		frappe.db.sql("""delete from tabSingles where doctype=%s""", self.doctype)
-		for field, value in d.iteritems():
+		for field, value in iteritems(d):
 			if field != "doctype":
 				frappe.db.sql("""insert into tabSingles(doctype, field, value)
 					values (%s, %s, %s)""", (self.doctype, field, value))
@@ -397,7 +404,6 @@ class Document(BaseDocument):
 
 	def _validate(self):
 		self._validate_mandatory()
-		self._validate_links()
 		self._validate_selects()
 		self._validate_constants()
 		self._validate_length()
@@ -662,7 +668,7 @@ class Document(BaseDocument):
 			# hack! to run hooks even if method does not exist
 			fn = lambda self, *args, **kwargs: None
 
-		fn.__name__ = method.encode("utf-8")
+		fn.__name__ = str(method)
 		out = Document.hook(fn)(self, *args, **kwargs)
 
 		self.run_email_alerts(method)
@@ -709,6 +715,7 @@ class Document(BaseDocument):
 			# value change is not applicable in insert
 			event_map['validate'] = 'Value Change'
 			event_map['before_change'] = 'Value Change'
+			event_map['before_update_after_submit'] = 'Value Change'
 
 		for alert in self.flags.email_alerts:
 			event = event_map.get(method, None)
@@ -762,7 +769,7 @@ class Document(BaseDocument):
 
 		self._doc_before_save = None
 		if not self.is_new() and getattr(self.meta, 'track_changes', False):
-			self._doc_before_save = frappe.get_doc(self.doctype, self.name)
+			self.get_doc_before_save()
 
 		if self.flags.ignore_validate:
 			return
@@ -802,12 +809,7 @@ class Document(BaseDocument):
 		self.clear_cache()
 		self.notify_update()
 
-		try:
-			frappe.enqueue('frappe.utils.global_search.update_global_search',
-				now=frappe.flags.in_test or frappe.flags.in_install or frappe.flags.in_migrate,
-				doc=self)
-		except redis.exceptions.ConnectionError:
-			update_global_search(self)
+		update_global_search(self)
 
 		if self._doc_before_save and not self.flags.ignore_version:
 			self.save_version()

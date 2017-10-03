@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 .gantt #grid .grid-background {
   fill: none;
 }
@@ -109,4 +110,11 @@
 }
 .gantt .hide {
   display: none;
+=======
+.gantt .bar-milestone .bar {
+  fill: #FD8B8B;
+}
+.gantt .bar-milestone .bar-progress {
+  fill: #FC4F51;
+>>>>>>> 1c8c7cc02f12a7d93cb83936ef476271ac830485
 }

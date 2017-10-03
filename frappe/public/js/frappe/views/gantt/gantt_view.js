@@ -84,6 +84,7 @@ frappe.views.GanttView = frappe.views.ListRenderer.extend({
 			}
 		});
 		this.render_dropdown();
+		this.set_colors();
 	},
 
 	render_dropdown: function() {
@@ -105,8 +106,7 @@ frappe.views.GanttView = frappe.views.ListRenderer.extend({
 				__(view_mode) + "</a></li>";
 		});
 		var $dropdown = $(dropdown)
-		$dropdown.find(".dropdown-menu")
-				.append(dropdown_list);
+		$dropdown.find(".dropdown-menu").append(dropdown_list);
 		me.list_view.$page
 			.find(`[data-list-renderer='Gantt'] > .list-row-right`)
 			.css("margin-right", "15px").html($dropdown)
@@ -115,6 +115,30 @@ frappe.views.GanttView = frappe.views.ListRenderer.extend({
 			me.gantt.change_view_mode(mode);
 			$dropdown.find(".dropdown-text").text(mode);
 		});
+	},
+
+	set_colors: function() {
+		const classes = this.tasks
+			.map(t => t.custom_class)
+			.filter(c => c && c.startsWith('color-'));
+
+		let style = classes.map(c => {
+			const class_name = c.replace('#', '');
+			const bar_color = '#' + c.substr(6);
+			const progress_color = frappe.ui.color.get_contrast_color(bar_color);
+			return `
+				.gantt .bar-wrapper.${class_name} .bar {
+					fill: ${bar_color};
+				}
+				.gantt .bar-wrapper.${class_name} .bar-progress {
+					fill: ${progress_color};
+				}
+			`;
+		}).join("");
+
+		style = `<style>${style}</style>`;
+
+		this.wrapper.prepend(style);
 	},
 
 	prepare_tasks: function() {
@@ -137,7 +161,7 @@ frappe.views.GanttView = frappe.views.ListRenderer.extend({
 				var label = item[field_map.title];
 			}
 
-			return {
+			var r = {
 				start: item[field_map.start],
 				end: item[field_map.end],
 				name: label,
@@ -146,6 +170,16 @@ frappe.views.GanttView = frappe.views.ListRenderer.extend({
 				progress: progress,
 				dependencies: item.depends_on_tasks || ""
 			};
+
+			if(item.color && frappe.ui.color.validate_hex(item.color)) {
+				r['custom_class'] = 'color-' + item.color.substr(1);
+			}
+
+			if(item.is_milestone) {
+				r['custom_class'] = 'bar-milestone';
+			}
+
+			return r;
 		});
 	},
 	get_item: function(name) {
@@ -175,7 +209,7 @@ frappe.views.GanttView = frappe.views.ListRenderer.extend({
 			},
 			callback: function() {
 				me.gantt.updating_task = false;
-				show_alert({message:__("Saved"), indicator: 'green'}, 1);
+				frappe.show_alert({message:__("Saved"), indicator: 'green'}, 1);
 			}
 		});
 	},
@@ -192,7 +226,7 @@ frappe.views.GanttView = frappe.views.ListRenderer.extend({
 		} else {
 			// reset gantt state
 			this.gantt.change_view_mode(this.gantt_view_mode);
-			show_alert({message: __("Not permitted"), indicator: 'red'}, 1);
+			frappe.show_alert({message: __("Not permitted"), indicator: 'red'}, 1);
 			return false;
 		}
 	},

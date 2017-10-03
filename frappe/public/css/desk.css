@@ -89,6 +89,7 @@ kbd {
 }
 .dropdown-menu > li > a {
   padding: 14px;
+  white-space: normal;
 }
 .dropdown-menu {
   min-width: 200px;
@@ -257,7 +258,7 @@ a[disabled="disabled"]:hover {
 }
 .link-btn {
   position: absolute;
-  top: 2px;
+  top: 3px;
   right: 4px;
   border-radius: 2px;
   padding: 3px;
@@ -440,7 +441,7 @@ fieldset[disabled] .form-control {
   }
 }
 @media (min-width: 768px) {
-  .video-modal {
+  .video-modal .modal-dialog {
     width: 700px;
   }
 }
@@ -508,6 +509,31 @@ fieldset[disabled] .form-control {
   cursor: pointer;
   margin-right: 10px;
 }
+a.progress-small .progress-chart {
+  width: 40px;
+  margin-top: 4px;
+  float: right;
+}
+a.progress-small .progress {
+  margin-bottom: 0;
+}
+a.progress-small .progress-bar {
+  transition: unset;
+  background-color: #98d85b;
+}
+li.user-progress .progress-chart {
+  width: 50px;
+  margin-top: 8px;
+}
+li.user-progress .progress {
+  margin-bottom: 0;
+  background-color: #fff;
+  border: 1px solid #e5e7e9;
+}
+li.user-progress .progress-bar {
+  transition: unset;
+  background-color: #98d85b;
+}
 /* on small screens, show only icons on top */
 @media (max-width: 767px) {
   .module-view-layout .nav-stacked > li {
@@ -517,6 +543,9 @@ fieldset[disabled] .form-control {
   .nav-stacked > li + li {
     margin-top: 0px;
     margin-left: 2px;
+  }
+  li.user-progress .progress-chart {
+    width: 25px;
   }
 }
 .msg-box {
@@ -696,6 +725,21 @@ fieldset[disabled] .form-control {
 .modal .note-editor [data-original-title="Video"],
 .modal .note-editor [data-original-title="Table"] {
   display: none;
+}
+.note-hint-popover {
+  border-radius: 3px;
+  border-color: #d1d8dd;
+  padding: 0;
+}
+.note-hint-popover .popover-content {
+  padding: 0;
+}
+.note-hint-popover .note-hint-item {
+  color: #36414C !important;
+  padding: 5px 8.8px !important;
+}
+.note-hint-popover .note-hint-item.active {
+  background-color: #F0F4F7 !important;
 }
 .search-dialog .modal-dialog {
   width: 768px;
@@ -994,4 +1038,121 @@ input[type="checkbox"]:checked:before {
   input[type="checkbox"] {
     visibility: visible;
   }
+}
+.color-picker {
+  position: relative;
+  z-index: 999;
+}
+.color-picker .color-picker-pallete {
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: #fff;
+  border: 1px solid #d1d8dd;
+  width: 290px;
+  height: 106px;
+  padding-top: 10px;
+  padding-left: 5px;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.color-picker .color-picker-pallete:after,
+.color-picker .color-picker-pallete:before {
+  border: solid transparent;
+  content: " ";
+  height: 0;
+  width: 0;
+  pointer-events: none;
+  position: absolute;
+  bottom: 100%;
+  left: 30px;
+}
+.color-picker .color-picker-pallete:after {
+  border-color: rgba(255, 255, 255, 0);
+  border-bottom-color: #fff;
+  border-width: 8px;
+  margin-left: -8px;
+}
+.color-picker .color-picker-pallete:before {
+  border-color: rgba(221, 221, 221, 0);
+  border-bottom-color: #d1d8dd;
+  border-width: 9px;
+  margin-left: -9px;
+}
+.color-picker .color-box {
+  cursor: pointer;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin: -2px 0 0 3px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+.slides-wrapper:focus {
+  outline: none;
+}
+.slides-wrapper .fa-circle {
+  font-size: 10px;
+  margin: 0px 2px;
+}
+.slides-wrapper .fa-circle.active {
+  color: #5e64ff;
+}
+.slides-wrapper .fa-circle.link {
+  cursor: pointer;
+}
+.slides-wrapper .slide-wrapper:focus {
+  outline: none;
+}
+.slides-wrapper .form {
+  margin-top: 30px;
+}
+.slides-wrapper .form .form-layout {
+  margin-top: 0px;
+  margin-bottom: 0px;
+}
+.slides-wrapper .form .form-section {
+  padding: 0px 7px;
+  border: none;
+}
+.slides-wrapper .add-more {
+  margin-bottom: 30px;
+}
+.slides-wrapper .lead {
+  margin-top: 20px;
+}
+.slides-wrapper .success-state {
+  margin-bottom: 20px;
+}
+.slides-wrapper .next-steps-links .title {
+  text-transform: uppercase;
+  color: #8D99A6;
+  font-size: 11px;
+}
+.slides-wrapper .btn-primary {
+  font-weight: bold;
+}
+.slides-wrapper .footer {
+  margin-top: 15px;
+  padding: 0px 7px;
+}
+.slides-wrapper .footer .btn:not(:last-child) {
+  margin-right: 3px;
+}
+.slides-wrapper .footer a.make-btn.disabled {
+  background-color: #b1bdca;
+  color: #fff;
+  border-color: #b1bdca;
+}
+.user-progress-dialog .slides-progress {
+  margin-top: 15px;
+}
+.user-progress-dialog .done-state .check-container {
+  font-size: 64px;
+  margin: 40px;
+}
+.user-progress-dialog .done-state .title {
+  font-weight: normal;
+}
+.user-progress-dialog .done-state .help-links a {
+  margin: 0px 10px;
 }

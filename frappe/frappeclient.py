@@ -2,6 +2,7 @@ from __future__ import print_function
 import requests
 import json
 import frappe
+from six import iteritems, string_types
 
 '''
 FrappeClient is a library that helps you connect with other frappe systems
@@ -37,6 +38,7 @@ class FrappeClient(object):
 		if r.status_code==200 and r.json().get('message') == "Logged In":
 			return r.json()
 		else:
+			print(r.text)
 			raise AuthError
 
 	def logout(self):
@@ -47,7 +49,7 @@ class FrappeClient(object):
 
 	def get_list(self, doctype, fields='"*"', filters=None, limit_start=0, limit_page_length=0):
 		"""Returns list of records of a particular type"""
-		if not isinstance(fields, basestring):
+		if not isinstance(fields, string_types):
 			fields = json.dumps(fields)
 		params = {
 			"fields": fields,
@@ -100,7 +102,7 @@ class FrappeClient(object):
 		:param doctype: `doctype` to be deleted
 		:param name: `name` of document to be deleted'''
 		return self.post_request({
-			"cmd": "frappe.model.delete_doc",
+			"cmd": "frappe.client.delete",
 			"doctype": doctype,
 			"name": name
 		})
@@ -269,7 +271,7 @@ class FrappeClient(object):
 
 	def preprocess(self, params):
 		"""convert dicts, lists to json"""
-		for key, value in params.iteritems():
+		for key, value in iteritems(params):
 			if isinstance(value, (dict, list)):
 				params[key] = json.dumps(value)
 
@@ -290,3 +292,37 @@ class FrappeClient(object):
 			return rjson['data']
 		else:
 			return None
+
+class FrappeOAuth2Client(FrappeClient):
+	def __init__(self, url, access_token, verify=True):
+		self.access_token = access_token
+		self.headers = {
+			"Authorization": "Bearer " + access_token,
+			"content-type": "application/x-www-form-urlencoded"
+		}
+		self.verify = verify
+		self.session = OAuth2Session(self.headers)
+		self.url = url
+
+	def get_request(self, params):
+		res = requests.get(self.url, params=self.preprocess(params), headers=self.headers, verify=self.verify)
+		res = self.post_process(res)
+		return res
+
+	def post_request(self, data):
+		res = requests.post(self.url, data=self.preprocess(data), headers=self.headers, verify=self.verify)
+		res = self.post_process(res)
+		return res
+
+class OAuth2Session():
+	def __init__(self, headers):
+		self.headers = headers
+	def get(self, url, params, verify):
+		res = requests.get(url, params=params, headers=self.headers, verify=verify)
+		return res
+	def post(self, url, data, verify):
+		res = requests.post(url, data=data, headers=self.headers, verify=verify)
+		return res
+	def put(self, url, data, verify):
+		res = requests.put(url, data=data, headers=self.headers, verify=verify)
+		return res

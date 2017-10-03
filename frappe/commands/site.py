@@ -1,13 +1,15 @@
 from __future__ import unicode_literals, absolute_import, print_function
 import click
-import hashlib, os, sys
+import hashlib, os, sys, compileall
 import frappe
+from frappe import _
 from _mysql_exceptions import ProgrammingError
 from frappe.commands import pass_context, get_site
 from frappe.commands.scheduler import _is_scheduler_enabled
 from frappe.limits import update_limits, get_limits
 from frappe.installer import update_site_config
 from frappe.utils import touch_file, get_site_path
+from six import text_type
 
 @click.command('new-site')
 @click.argument('site')
@@ -34,7 +36,7 @@ def _new_site(db_name, site, mariadb_root_username=None, mariadb_root_password=N
 	"""Install a new Frappe site"""
 
 	if not db_name:
-		db_name = hashlib.sha1(site).hexdigest()[:16]
+		db_name = hashlib.sha1(site.encode()).hexdigest()[:16]
 
 	from frappe.installer import install_db, make_site_dirs
 	from frappe.installer import install_app as _install_app
@@ -45,7 +47,7 @@ def _new_site(db_name, site, mariadb_root_username=None, mariadb_root_password=N
 	try:
 		# enable scheduler post install?
 		enable_scheduler = _is_scheduler_enabled()
-	except:
+	except Exception:
 		enable_scheduler = False
 
 	make_site_dirs()
@@ -122,11 +124,12 @@ def restore(context, sql_file_path, mariadb_root_username=None, mariadb_root_pas
 @pass_context
 def reinstall(context, admin_password=None, yes=False):
 	"Reinstall site ie. wipe all data and start over"
+	site = get_site(context)
+	_reinstall(site, admin_password, yes, verbose=context.verbose)
 
+def _reinstall(site, admin_password=None, yes=False, verbose=False):
 	if not yes:
 		click.confirm('This will wipe your database. Are you sure you want to reinstall?', abort=True)
-
-	site = get_site(context)
 	try:
 		frappe.init(site=site)
 		frappe.connect()
@@ -141,7 +144,7 @@ def reinstall(context, admin_password=None, yes=False):
 		frappe.destroy()
 
 	frappe.init(site=site)
-	_new_site(frappe.conf.db_name, site, verbose=context.verbose, force=True, reinstall=True,
+	_new_site(frappe.conf.db_name, site, verbose=verbose, force=True, reinstall=True,
 		install_apps=installed, admin_password=admin_password)
 
 @click.command('install-app')
@@ -214,6 +217,8 @@ def migrate(context, rebuild_website=False):
 			migrate(context.verbose, rebuild_website=rebuild_website)
 		finally:
 			frappe.destroy()
+
+	compileall.compile_dir('../apps', quiet=1)
 
 @click.command('run-patch')
 @click.argument('module')
@@ -373,9 +378,8 @@ def _drop_site(site, root_login='root', root_password=None, archived_sites_path=
 
 
 def move(dest_dir, site):
-	import os
 	if not os.path.isdir(dest_dir):
-		raise Exception, "destination is not a directory or does not exist"
+		raise Exception("destination is not a directory or does not exist")
 
 	frappe.init(site)
 	old_path = frappe.utils.get_site_path()
@@ -427,7 +431,7 @@ def set_limit(context, site, limit, value):
 
 @click.command('set-limits')
 @click.option('--site', help='site name')
-@click.option('--limit', 'limits', type=(unicode, unicode), multiple=True)
+@click.option('--limit', 'limits', type=(text_type, text_type), multiple=True)
 @pass_context
 def set_limits(context, site, limits):
 	_set_limits(context, site, limits)
@@ -445,9 +449,9 @@ def _set_limits(context, site, limits):
 		frappe.connect()
 		new_limits = {}
 		for limit, value in limits:
-			if limit not in ('emails', 'space', 'users', 'email_group',
+			if limit not in ('daily_emails', 'emails', 'space', 'users', 'email_group',
 				'expiry', 'support_email', 'support_chat', 'upgrade_url'):
-				frappe.throw('Invalid limit {0}'.format(limit))
+				frappe.throw(_('Invalid limit {0}').format(limit))
 
 			if limit=='expiry' and value:
 				try:
@@ -458,7 +462,7 @@ def _set_limits(context, site, limits):
 			elif limit=='space':
 				value = float(value)
 
-			elif limit in ('users', 'emails', 'email_group'):
+			elif limit in ('users', 'emails', 'email_group', 'daily_emails'):
 				value = int(value)
 
 			new_limits[limit] = value
@@ -468,7 +472,7 @@ def _set_limits(context, site, limits):
 @click.command('clear-limits')
 @click.option('--site', help='site name')
 @click.argument('limits', nargs=-1, type=click.Choice(['emails', 'space', 'users', 'email_group',
-	'expiry', 'support_email', 'support_chat', 'upgrade_url']))
+	'expiry', 'support_email', 'support_chat', 'upgrade_url', 'daily_emails']))
 @pass_context
 def clear_limits(context, site, limits):
 	"""Clears given limit from the site config, and removes limit from site config if its empty"""
@@ -495,7 +499,7 @@ def set_last_active_for_user(context, user=None):
 
 	from frappe.core.doctype.user.user import get_system_users
 	from frappe.utils.user import set_last_active_to_now
-	
+
 	site = get_site(context)
 
 	with frappe.init_site(site):

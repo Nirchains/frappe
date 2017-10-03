@@ -5,7 +5,7 @@ frappe.provide("frappe.tools");
 
 frappe.tools.downloadify = function(data, roles, title) {
 	if(roles && roles.length && !has_common(roles, roles)) {
-		msgprint(__("Export not allowed. You need {0} role to export.", [frappe.utils.comma_or(roles)]));
+		frappe.msgprint(__("Export not allowed. You need {0} role to export.", [frappe.utils.comma_or(roles)]));
 		return;
 	}
 
@@ -66,7 +66,7 @@ frappe.tools.to_csv = function(data) {
 	var res = [];
 	$.each(data, function(i, row) {
 		row = $.map(row, function(col) {
-			return typeof(col)==="string" ? ('"' + col.replace(/"/g, '""') + '"') : col;
+			return typeof(col)==="string" ? ('"' + $('<i>').html(col.replace(/"/g, '""')).text() + '"') : col;
 		});
 		res.push(row.join(","));
 	});

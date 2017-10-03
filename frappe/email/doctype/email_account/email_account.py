@@ -246,7 +246,12 @@ class EmailAccount(Document):
 			else:
 				email_sync_rule = self.build_email_sync_rule()
 
-				email_server = self.get_incoming_server(in_receive=True, email_sync_rule=email_sync_rule)
+				email_server = None
+				try:
+					email_server = self.get_incoming_server(in_receive=True, email_sync_rule=email_sync_rule)
+				except Exception:
+					frappe.log_error(title=_("Error while connecting to email account {0}").format(self.name))
+
 				if not email_server:
 					return
 
@@ -260,8 +265,8 @@ class EmailAccount(Document):
 				uid_reindexed = emails.get("uid_reindexed", False)
 
 			for idx, msg in enumerate(incoming_mails):
+				uid = None if not uid_list else uid_list[idx]
 				try:
-					uid = None if not uid_list else uid_list[idx]
 					args = {
 						"uid": uid,
 						"seen": None if not seen_status else get_seen(seen_status.get(uid, None)),
@@ -277,7 +282,7 @@ class EmailAccount(Document):
 					frappe.db.rollback()
 					log('email_account.receive')
 					if self.use_imap:
-						self.handle_bad_emails(email_server, msg[1], msg[0], frappe.get_traceback())
+						self.handle_bad_emails(email_server, uid, msg, frappe.get_traceback())
 					exceptions.append(frappe.get_traceback())
 
 				else:
@@ -304,13 +309,14 @@ class EmailAccount(Document):
 				message_id = "can't be parsed"
 
 			unhandled_email = frappe.get_doc({
-				"doctype": "Unhandled Email",
-				"email_account": email_server.settings.email_account,
+				"raw": raw,
 				"uid": uid,
+				"reason":reason,
 				"message_id": message_id,
-				"reason":reason
+				"doctype": "Unhandled Email",
+				"email_account": email_server.settings.email_account
 			})
-			unhandled_email.save()
+			unhandled_email.insert(ignore_permissions=True)
 			frappe.db.commit()
 
 	def insert_communication(self, msg, args={}):
@@ -330,6 +336,8 @@ class EmailAccount(Document):
 			# gmail shows sent emails in inbox
 			# and we don't want emails sent by us to be pulled back into the system again
 			# dont count emails sent by the system get those
+			if frappe.flags.in_test:
+				print('WARN: Cannot pull email. Sender sames as recipient inbox')
 			raise SentEmailInInbox
 
 		if email.message_id:
@@ -342,7 +350,7 @@ class EmailAccount(Document):
 			if names:
 				name = names[0].get("name")
 				# email is already available update communication uid instead
-				frappe.db.set_value("Communication", name, "uid", uid)
+				frappe.db.set_value("Communication", name, "uid", uid, update_modified=False)
 				return
 
 		communication = frappe.get_doc({
@@ -471,7 +479,6 @@ class EmailAccount(Document):
 			if parent:
 				parent = frappe._dict(doctype=self.append_to, name=parent[0].name)
 				return parent
-
 
 	def create_new_parent(self, communication, email):
 		'''If no parent found, create a new reference document'''
@@ -678,27 +685,36 @@ def pull(now=False):
 			frappe.cache().set_value("workers:no-internet", False)
 		else:
 			return
+
 	queued_jobs = get_jobs(site=frappe.local.site, key='job_name')[frappe.local.site]
-	for email_account in frappe.get_list("Email Account",
-		filters={"enable_incoming": 1, "awaiting_password": 0}):
-		if now:
-			pull_from_email_account(email_account.name)
+	email_accounts = frappe.db.sql_list("""select name from `tabEmail Account` where
+		enable_incoming=1 and awaiting_password=0""")
 
-		else:
-			# job_name is used to prevent duplicates in queue
-			job_name = 'pull_from_email_account|{0}'.format(email_account.name)
+	# No incoming email account available
+	if not email_accounts:
+		return
 
-			if job_name not in queued_jobs:
-				enqueue(pull_from_email_account, 'short', event='all', job_name=job_name,
-					email_account=email_account.name)
+	if now:
+		pull_from_email_accounts(email_accounts)
+	else:
+		# job_name is used to prevent duplicates in queue
+		job_name = 'pull_from_email_accounts|{0}'.format(",".join(email_accounts))
 
-def pull_from_email_account(email_account):
+		if job_name not in queued_jobs:
+			enqueue(pull_from_email_accounts, 'short', event='all', job_name=job_name,
+				email_accounts=email_accounts)
+
+def pull_from_email_accounts(email_accounts):
 	'''Runs within a worker process'''
-	email_account = frappe.get_doc("Email Account", email_account)
-	email_account.receive()
+	if not email_accounts:
+		return
 
-	# mark Email Flag Queue mail as read
-	email_account.mark_emails_as_read_unread()
+	for email_account in email_accounts:
+		email_account = frappe.get_doc("Email Account", email_account)
+		email_account.receive()
+
+		# mark Email Flag Queue mail as read
+		email_account.mark_emails_as_read_unread()
 
 def get_max_email_uid(email_account):
 	# get maximum uid of emails

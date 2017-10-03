@@ -27,7 +27,7 @@ class PrintFormat(Document):
 		if not self.module:
 			self.module = frappe.db.get_value('DocType', self.doc_type, 'module')
 
-		if self.html:
+		if self.html and self.print_format_type != 'Js':
 			validate_template(self.html)
 
 	def extract_images(self):
@@ -77,4 +77,7 @@ def make_default(name):
 			'value': name,
 		})
 
-	frappe.msgprint(frappe._("Done"))
+	frappe.msgprint(frappe._("{0} is now default print format for {1} doctype").format(
+		frappe.bold(name),
+		frappe.bold(print_format.doc_type)
+	))
