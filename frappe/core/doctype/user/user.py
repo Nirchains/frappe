@@ -42,6 +42,7 @@ class User(Document):
 
 	def before_insert(self):
 		self.flags.in_insert = True
+		throttle_user_creation()
 
 	def validate(self):
 		self.check_demo()
@@ -929,7 +930,7 @@ def send_token_via_sms(tmp_id,phone_no=None,user=None):
 			return False
 
 	args[ss.receiver_parameter] = usr_phone
-	status = send_request(ss.sms_gateway_url, args)
+	status = send_request(ss.sms_gateway_url, args, use_post=ss.use_post)
 
 	if 200 <= status < 300:
 		frappe.cache().delete(tmp_id + '_token')
@@ -977,3 +978,10 @@ def reset_otp_secret(user):
 		return frappe.msgprint(_("OTP Secret has been reset. Re-registration will be required on next login."))
 	else:
 		return frappe.throw(_("OTP secret can only be reset by the Administrator."))
+
+def throttle_user_creation():
+	if frappe.flags.in_import:
+		return
+
+	if frappe.db.get_creation_count('User', 60) > frappe.local.conf.get("throttle_user_limit", 60):
+		frappe.throw(_('Throttled'))

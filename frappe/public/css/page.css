@@ -277,10 +277,6 @@ select.input-sm {
   opacity: 1;
   cursor: pointer;
 }
-.page-card-container,
-.setup-state {
-  background-color: #f5f7fa;
-}
 .page-card-container {
   padding: 70px;
 }

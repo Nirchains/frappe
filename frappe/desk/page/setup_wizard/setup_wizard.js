@@ -70,7 +70,12 @@ frappe.pages['setup-wizard'].on_page_show = function(wrapper) {
 
 frappe.setup.on("before_load", function() {
 	// load slides
-	frappe.setup.slides_settings.map(frappe.setup.add_slide);
+	frappe.setup.slides_settings.forEach((s) => {
+		if(!(s.name==='user' && frappe.boot.developer_mode)) {
+			// if not user slide with developer mode
+			frappe.setup.add_slide(s);
+		}
+	});
 });
 
 frappe.setup.SetupWizard = class SetupWizard extends frappe.ui.Slides {
@@ -252,7 +257,7 @@ frappe.setup.SetupWizard = class SetupWizard extends frappe.ui.Slides {
 		const loading_html = loading
 			? '<div style="width:100%;height:100%" class="lds-rolling state-icon"><div></div></div>'
 			: `<div style="width:100%;height:100%" class="state-icon">
-				<i class="fa fa-check-circle text-extra-muted"
+				<i class="fa fa-check-circle text-success"
 					style="font-size: 64px; margin-top: -8px;"></i>
 			</div>`;
 
@@ -501,19 +506,22 @@ frappe.setup.utils = {
 
 	bind_language_events: function(slide) {
 		slide.get_input("language").unbind("change").on("change", function() {
-			var lang = $(this).val() || "English";
-			frappe._messages = {};
-			frappe.call({
-				method: "frappe.desk.page.setup_wizard.setup_wizard.load_messages",
-				freeze: true,
-				args: {
-					language: lang
-				},
-				callback: function(r) {
-					frappe.setup._from_load_messages = true;
-					frappe.wizard.refresh_slides();
-				}
-			});
+			clearTimeout (slide.language_call_timeout);
+			slide.language_call_timeout = setTimeout (() => {
+				var lang = $(this).val() || "English";
+				frappe._messages = {};
+				frappe.call({
+					method: "frappe.desk.page.setup_wizard.setup_wizard.load_messages",
+					freeze: true,
+					args: {
+						language: lang
+					},
+					callback: function(r) {
+						frappe.setup._from_load_messages = true;
+						frappe.wizard.refresh_slides();
+					}
+				});
+			}, 500);
 		});
 	},
 
