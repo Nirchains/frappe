@@ -35,7 +35,7 @@ frappe.pages['modules_setup'].on_page_load = function(wrapper) {
 	}
 
 	// save action
-	page.set_primary_action('Save', function() {
+	page.set_primary_action(__('Save'), function() {
 		var hidden_list = [];
 		page.wrapper.find('input.module-select').each(function() {
 			if(!$(this).is(":checked")) {
