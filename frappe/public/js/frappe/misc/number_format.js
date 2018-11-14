@@ -74,7 +74,7 @@ frappe.number_format_info = {
 window.format_number = function (v, format, decimals) {
 	if (!format) {
 		format = get_number_format();
-		if (decimals == null) decimals = cint(frappe.defaults.get_default("float_precision")) || 3;
+		if (decimals == null) decimals = cint(frappe.defaults.get_default("float_precision")) || 6;
 	}
 
 	var info = get_number_format_info(format);
