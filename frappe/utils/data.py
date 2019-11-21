@@ -372,26 +372,20 @@ def fmt_money(amount, precision=None, currency=None):
 	# 40,000.00000 -> 40,000.00
 	# 40,000.23000 -> 40,000.23
 
-	if isinstance(amount, string_types):
-		amount = flt(amount, precision)
-
 	if decimal_str:
-		decimals_after = str(round(amount % 1, precision))
-		parts = decimals_after.split('.')
-		parts = parts[1] if len(parts) > 1 else parts[0]
-		decimals = parts
+		parts = str(amount).split(decimal_str)
+		decimals = parts[1] if len(parts) > 1 else ''
 		if precision > 2:
 			if len(decimals) < 3:
 				if currency:
-					fraction  = frappe.db.get_value("Currency", currency, "fraction_units", cache=True) or 100
+					fraction  = frappe.db.get_value("Currency", currency, "fraction_units") or 100
 					precision = len(cstr(fraction)) - 1
 				else:
 					precision = number_format_precision
 			elif len(decimals) < precision:
 				precision = len(decimals)
 
-	amount = '%.*f' % (precision, round(flt(amount), precision))
-
+	amount = '%.*f' % (precision, flt(amount))
 	if amount.find('.') == -1:
 		decimals = ''
 	else:
@@ -419,12 +413,11 @@ def fmt_money(amount, precision=None, currency=None):
 	parts.reverse()
 
 	amount = comma_str.join(parts) + ((precision and decimal_str) and (decimal_str + decimals) or "")
-	if amount != '0':
-		amount = minus + amount
+	amount = minus + amount
 
 	if currency and frappe.defaults.get_global_default("hide_currency_symbol") != "Yes":
-		symbol = frappe.db.get_value("Currency", currency, "symbol", cache=True) or currency
-		amount = amount + " " + symbol
+		symbol = frappe.db.get_value("Currency", currency, "symbol") or currency
+		amount = symbol + " " + amount
 
 	return amount
 
@@ -800,6 +793,16 @@ def make_filter_tuple(doctype, key, value):
 		return [doctype, key, value[0], value[1]]
 	else:
 		return [doctype, key, "=", value]
+
+def make_filter_dict(filters):
+	'''convert this [[doctype, key, operator, value], ..]
+	to this { key: (operator, value), .. }
+	'''
+	_filter = frappe._dict()
+	for f in filters:
+		_filter[f[1]] = (f[2], f[3])
+
+	return _filter
 
 def scrub_urls(html):
 	html = expand_relative_urls(html)
