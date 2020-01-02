@@ -408,20 +408,25 @@ def fmt_money(amount, precision=None, currency=None):
 	# 40,000.00000 -> 40,000.00
 	# 40,000.23000 -> 40,000.23
 
+	if isinstance(amount, string_types):
+		amount = flt(amount, precision)
+
 	if decimal_str:
-		parts = str(amount).split(decimal_str)
-		decimals = parts[1] if len(parts) > 1 else ''
+		decimals_after = str(round(amount % 1, precision))
+		parts = decimals_after.split('.')
+		parts = parts[1] if len(parts) > 1 else parts[0]
+		decimals = parts
 		if precision > 2:
 			if len(decimals) < 3:
 				if currency:
-					fraction  = frappe.db.get_value("Currency", currency, "fraction_units") or 100
+					fraction  = frappe.db.get_value("Currency", currency, "fraction_units", cache=True) or 100
 					precision = len(cstr(fraction)) - 1
 				else:
 					precision = number_format_precision
 			elif len(decimals) < precision:
 				precision = len(decimals)
 
-	amount = '%.*f' % (precision, flt(amount))
+	amount = '%.*f' % (precision, round(flt(amount), precision))
 	if amount.find('.') == -1:
 		decimals = ''
 	else:
