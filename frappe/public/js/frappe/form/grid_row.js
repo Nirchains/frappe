@@ -22,6 +22,9 @@ export default class GridRow {
 				if(me.grid.allow_on_grid_editing() && me.grid.is_editable()) {
 					// pass
 				} else {
+					if (!me.grid.is_editable()) {
+						me.docfields.map(df => df.read_only = 1);
+					}
 					me.toggle_view();
 					return false;
 				}
@@ -299,11 +302,7 @@ export default class GridRow {
 			});
 
 		$col.field_area = $('<div class="field-area"></div>').appendTo($col).toggle(false);
-		//PFG
-		$col.static_area = $('<div class="static-area ellipsis"></div>')
-		.attr("title", txt.toString().replace(/<(?:.|\n)*?>/gm, ''))
-		.appendTo($col).html(txt);
-		//$col.static_area = $('<div class="static-area ellipsis"></div>').appendTo($col).html(txt);
+		$col.static_area = $('<div class="static-area ellipsis"></div>').appendTo($col).html(txt);
 		$col.df = df;
 		$col.column_index = ci;
 
@@ -589,11 +588,7 @@ export default class GridRow {
 		// reset static value
 		var column = this.columns[fieldname];
 		if(column) {
-			//PFG
-			//column.static_area.html(txt || "");
-			column.static_area
-			.attr("title", txt.toString().replace(/<(?:.|\n)*?>/gm, ''))
-			.html(txt || "");
+			column.static_area.html(txt || "");
 			if(df && df.reqd) {
 				column.toggleClass('error', !!(txt===null || txt===''));
 			}
